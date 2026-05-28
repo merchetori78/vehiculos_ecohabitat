@@ -136,15 +136,102 @@ function Dashboard({ profile }) {
 function Vehicles({ profile }) {
   const [vehicles, setVehicles] = useState([])
   const [selected, setSelected] = useState(null)
-  useEffect(() => { load() }, [])
+  const [statusFilter, setStatusFilter] = useState('activo')
+
+  useEffect(() => { load() }, [statusFilter])
+
   async function load(){
-    const { data, error } = await supabase.from('vehicles').select('*, solred_cards(card_number,fuel_type,active), vehicle_assignments(driver_name,work_name,start_date,end_date)').order('plate')
+    let query = supabase
+      .from('vehicles')
+      .select('*, solred_cards(card_number,fuel_type,active), vehicle_assignments(driver_name,work_name,start_date,end_date)')
+      .order('plate')
+
+    if (statusFilter !== 'todos') {
+      query = query.eq('status', statusFilter)
+    }
+
+    const { data, error } = await query
+
     if (error) console.error(error)
     setVehicles(data || [])
   }
-  return <section><div className="toolbar"><h2>Vehículos</h2>{canEdit(profile) && <button onClick={()=>setSelected({status:'activo'})}>Nuevo</button>}</div>{selected && <VehicleEditor vehicle={selected} onDone={()=>{setSelected(null);load()}}/>}<div className="list">{vehicles.map(v=><article className="card" key={v.id}><h3>{v.plate} · {v.brand} {v.model}</h3><p>{v.current_driver_name || 'Sin conductor'} · {v.primary_work_name || 'Sin obra'} · {v.status}</p><p>Solred: {v.solred_cards?.[0]?.card_number || 'sin tarjeta'}</p>{canEdit(profile)&&<button onClick={()=>setSelected(v)}>Modificar</button>}</article>)}</div></section>
-}
 
+  return (
+    <section>
+      <div className="toolbar">
+        <h2>Vehículos</h2>
+
+        <div className="inline">
+          <button
+            type="button"
+            className={statusFilter === 'activo' ? 'active' : 'secondary'}
+            onClick={() => setStatusFilter('activo')}
+          >
+            Activos
+          </button>
+
+          <button
+            type="button"
+            className={statusFilter === 'baja' ? 'active' : 'secondary'}
+            onClick={() => setStatusFilter('baja')}
+          >
+            Bajas
+          </button>
+
+          <button
+            type="button"
+            className={statusFilter === 'todos' ? 'active' : 'secondary'}
+            onClick={() => setStatusFilter('todos')}
+          >
+            Todos
+          </button>
+        </div>
+
+        {canEdit(profile) && (
+          <button
+            onClick={() => {
+              setSelected({ status: 'activo' })
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+            }}
+          >
+            Nuevo
+          </button>
+        )}
+      </div>
+
+      {selected && (
+        <VehicleEditor
+          vehicle={selected}
+          onDone={() => {
+            setSelected(null)
+            load()
+          }}
+        />
+      )}
+
+      <div className="list">
+        {vehicles.map(v => (
+          <article className="card" key={v.id}>
+            <h3>{v.plate} · {v.brand} {v.model}</h3>
+            <p>{v.current_driver_name || 'Sin conductor'} · {v.primary_work_name || 'Sin obra'} · {v.status}</p>
+            <p>Solred: {v.solred_cards?.[0]?.card_number || 'sin tarjeta'}</p>
+
+            {canEdit(profile) && (
+              <button
+                onClick={() => {
+                  setSelected(v)
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+              >
+                Modificar
+              </button>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
 function Assignments({ profile }) {
   const [vehicles, setVehicles] = useState([])
   const [profiles, setProfiles] = useState([])
