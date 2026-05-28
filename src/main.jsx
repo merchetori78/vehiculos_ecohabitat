@@ -118,7 +118,7 @@ const [showPassword, setShowPassword] = useState(false)
       {showPassword ? '🙈' : '👁️'}
     </button>
   </div>
-</label><button>Entrar</button><p className="muted">Los usuarios se crean desde Supabase o desde el panel de administración que añadiremos después.</p>{message && <p>{message}</p>}</form></Shell>
+</label><button>Entrar</button><p className="muted">Acceso exclusivo para personal autorizado de Eco Habitat.</p>{message && <p>{message}</p>}</form></Shell>
 }
 
 function Dashboard({ profile }) {
