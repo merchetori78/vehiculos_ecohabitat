@@ -205,12 +205,343 @@ function IncidentForm({ profile }) {
 }
 
 function Reports({ profile }) {
-  const [rows,setRows]=useState([])
-  async function load(){const {data,error}=await supabase.from('report_monthly_km_by_work').select('*').order('month',{ascending:false}); if(error) alert(error.message); else setRows(data||[])}
-  useEffect(()=>{load()},[])
-  return <section className="card"><h2>Informes ISO</h2><p>Primer informe: kilómetros por mes y obra. Se puede exportar desde Supabase a CSV y luego añadiremos botón PDF.</p><div className="tablewrap"><table><thead><tr><th>Mes</th><th>Matrícula</th><th>Obra</th><th>Km</th></tr></thead><tbody>{rows.map((r,i)=><tr key={i}><td>{r.month}</td><td>{r.plate}</td><td>{r.work_name}</td><td>{r.km_allocated}</td></tr>)}</tbody></table></div></section>
-}
+  const [kmRows, setKmRows] = useState([])
+  const [incidentRows, setIncidentRows] = useState([])
 
+  async function load() {
+    const { data: kmData, error: kmError } = await supabase
+      .from('report_monthly_km_by_work')
+      .select('*')
+      .order('month', { ascending: false })
+
+    if (kmError) {
+      alert(kmError.message)
+    } else {
+      setKmRows(kmData || [])
+    }
+
+    const { data: incidentData, error: incidentError } = await supabase
+      .from('incidents')
+      .select('*, vehicles(plate, vehicle_name)')
+      .neq('status', 'cerrada')
+
+    if (incidentError) {
+      alert(incidentError.message)
+    } else {
+      setIncidentRows(incidentData || [])
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  function downloadCsv(filename, rows) {
+    if (!rows.length) {
+      alert('No hay datos para exportar.')
+      return
+    }
+
+    const headers = Object.keys(rows[0])
+
+    const escapeCsv = (value) => {
+      if (value === null || value === undefined) return ''
+      const text = String(value).replace(/"/g, '""')
+      return `"${text}"`
+    }
+
+    const csv = [
+      headers.join(';'),
+      ...rows.map(row => headers.map(header => escapeCsv(row[header])).join(';'))
+    ].join('\n')
+
+    const blob = new Blob([`\uFEFF${csv}`], {
+      type: 'text/csv;charset=utf-8;'
+    })
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportKmCsv() {
+    const rows = kmRows.map(r => ({
+      mes: r.month,
+      matricula: r.plate,
+      vehiculo: r.vehicle_name || '',
+      obra: r.work_name || '',
+      km_imputados: r.km_allocated || 0,
+      km_iniciales: r.km_start || '',
+      km_finales: r.km_end || '',
+      km_total: r.km_total || '',
+      observaciones: r.notes || ''
+    }))
+
+    downloadCsv('informe_kilometros_por_obra.csv', rows)
+  }
+
+  function exportIncidentsCsv() {
+    const rows = incidentRows.map(i => ({
+      fecha: i.incident_date || '',
+      matricula: i.vehicles?.plate || '',
+      vehiculo: i.vehicles?.vehicle_name || '',
+      obra: i.work_name || '',
+      tipo: i.type || '',
+      gravedad: i.severity || '',
+      estado: i.status || '',
+      descripcion: i.description || ''
+    }))
+
+    downloadCsv('informe_incidencias_abiertas.csv', rows)
+  }
+
+  function generateIsoPdf() {
+    const printWindow = window.open('', '_blank')
+
+    if (!printWindow) {
+      alert('El navegador ha bloqueado la ventana de impresión. Permite ventanas emergentes para generar el PDF.')
+      return
+    }
+
+    const kmHtml = kmRows.map(r => `
+      <tr>
+        <td>${r.month || ''}</td>
+        <td>${r.plate || ''}</td>
+        <td>${r.vehicle_name || ''}</td>
+        <td>${r.work_name || ''}</td>
+        <td>${r.km_allocated || 0}</td>
+        <td>${r.km_start || ''}</td>
+        <td>${r.km_end || ''}</td>
+        <td>${r.km_total || ''}</td>
+      </tr>
+    `).join('')
+
+    const incidentHtml = incidentRows.map(i => `
+      <tr>
+        <td>${i.incident_date || ''}</td>
+        <td>${i.vehicles?.plate || ''}</td>
+        <td>${i.vehicles?.vehicle_name || ''}</td>
+        <td>${i.work_name || ''}</td>
+        <td>${i.type || ''}</td>
+        <td>${i.severity || ''}</td>
+        <td>${i.status || ''}</td>
+        <td>${i.description || ''}</td>
+      </tr>
+    `).join('')
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Informe ISO Flota Eco Habitat</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              margin: 32px;
+              color: #123c2c;
+            }
+
+            header {
+              border-bottom: 2px solid #123c2c;
+              margin-bottom: 24px;
+              padding-bottom: 12px;
+            }
+
+            h1 {
+              margin: 0;
+              font-size: 24px;
+            }
+
+            h2 {
+              margin-top: 28px;
+              font-size: 18px;
+            }
+
+            p {
+              color: #333;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 12px;
+              font-size: 11px;
+            }
+
+            th, td {
+              border: 1px solid #ccc;
+              padding: 6px;
+              text-align: left;
+              vertical-align: top;
+            }
+
+            th {
+              background: #e9f1ed;
+            }
+
+            .meta {
+              font-size: 12px;
+              color: #555;
+            }
+
+            .footer {
+              margin-top: 32px;
+              font-size: 11px;
+              color: #666;
+            }
+
+            @media print {
+              button {
+                display: none;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <header>
+            <h1>Informe ISO 9001 / ISO 14001 · Control de Vehículos</h1>
+            <p class="meta">Eco Habitat · Generado el ${new Date().toLocaleDateString('es-ES')}</p>
+          </header>
+
+          <p>
+            Informe de seguimiento de flota, kilómetros imputados por obra e incidencias abiertas.
+            Documento de apoyo para control interno, trazabilidad y revisión del sistema de gestión.
+          </p>
+
+          <h2>Kilómetros por mes y obra</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Mes</th>
+                <th>Matrícula</th>
+                <th>Vehículo</th>
+                <th>Obra</th>
+                <th>Km imputados</th>
+                <th>Km iniciales</th>
+                <th>Km finales</th>
+                <th>Km total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${kmHtml || '<tr><td colspan="8">Sin datos.</td></tr>'}
+            </tbody>
+          </table>
+
+          <h2>Incidencias abiertas</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Matrícula</th>
+                <th>Vehículo</th>
+                <th>Obra</th>
+                <th>Tipo</th>
+                <th>Gravedad</th>
+                <th>Estado</th>
+                <th>Descripción</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${incidentHtml || '<tr><td colspan="8">Sin incidencias abiertas.</td></tr>'}
+            </tbody>
+          </table>
+
+          <p class="footer">
+            Este informe se genera a partir de los registros almacenados en la aplicación de control de vehículos.
+            No sustituye a la revisión formal del responsable del sistema, pero sirve como evidencia documental de seguimiento.
+          </p>
+
+          <script>
+            window.onload = () => window.print()
+          </script>
+        </body>
+      </html>
+    `)
+
+    printWindow.document.close()
+  }
+
+  return (
+    <section className="card">
+      <h2>Informes ISO</h2>
+      <p>
+        Informes básicos para seguimiento de flota, control de kilómetros,
+        incidencias abiertas y evidencias para ISO 9001/14001.
+      </p>
+
+      <button type="button" onClick={generateIsoPdf}>
+        Generar PDF ISO
+      </button>
+
+      <h3>Kilómetros por mes y obra</h3>
+      <button type="button" className="secondary" onClick={exportKmCsv}>
+        Exportar kilómetros CSV
+      </button>
+
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Mes</th>
+              <th>Matrícula</th>
+              <th>Obra</th>
+              <th>Km imputados</th>
+            </tr>
+          </thead>
+          <tbody>
+            {kmRows.map((r, i) => (
+              <tr key={i}>
+                <td>{r.month}</td>
+                <td>{r.plate}</td>
+                <td>{r.work_name}</td>
+                <td>{r.km_allocated}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Incidencias abiertas</h3>
+      <button type="button" className="secondary" onClick={exportIncidentsCsv}>
+        Exportar incidencias CSV
+      </button>
+
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Matrícula</th>
+              <th>Vehículo</th>
+              <th>Obra</th>
+              <th>Tipo</th>
+              <th>Gravedad</th>
+              <th>Estado</th>
+              <th>Descripción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {incidentRows.map((i) => (
+              <tr key={i.id}>
+                <td>{i.incident_date || ''}</td>
+                <td>{i.vehicles?.plate || ''}</td>
+                <td>{i.vehicles?.vehicle_name || ''}</td>
+                <td>{i.work_name || ''}</td>
+                <td>{i.type || ''}</td>
+                <td>{i.severity || ''}</td>
+                <td>{i.status || ''}</td>
+                <td>{i.description || ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
 function canEdit(profile){ return ['admin','flota','jefe_obra'].includes(profile?.role) }
 
 createRoot(document.getElementById('root')).render(<App />)
