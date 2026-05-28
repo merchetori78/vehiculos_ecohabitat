@@ -42,12 +42,13 @@ function App() {
   return (
     <Shell profile={profile}>
       <nav className="tabs">
-        {['inicio','vehiculos','kilometros','incidencias','informes'].map(t => (
+        {['inicio','vehiculos','asignaciones','kilometros','incidencias','informes'].map(t => (
           <button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{label(t)}</button>
         ))}
       </nav>
       {tab === 'inicio' && <Dashboard profile={profile} />}
       {tab === 'vehiculos' && <Vehicles profile={profile} />}
+{tab === 'asignaciones' && <Assignments profile={profile} />}
       {tab === 'kilometros' && <KmForm profile={profile} />}
       {tab === 'incidencias' && <IncidentForm profile={profile} />}
       {tab === 'informes' && <Reports profile={profile} />}
@@ -55,7 +56,7 @@ function App() {
   )
 }
 
-function label(t){return {inicio:'Inicio',vehiculos:'Vehículos',kilometros:'Km',incidencias:'Incidencias',informes:'Informes'}[t]}
+function label(t){return {inicio:'Inicio',vehiculos:'Vehículos',asignaciones:'Asignaciones',kilometros:'Km',incidencias:'Incidencias',informes:'Informes'}[t]}
 
 function Shell({ children, profile }) {
   return <div className="app">
@@ -115,6 +116,240 @@ function Vehicles({ profile }) {
     setVehicles(data || [])
   }
   return <section><div className="toolbar"><h2>Vehículos</h2>{canEdit(profile) && <button onClick={()=>setSelected({status:'activo'})}>Nuevo</button>}</div>{selected && <VehicleEditor vehicle={selected} onDone={()=>{setSelected(null);load()}}/>}<div className="list">{vehicles.map(v=><article className="card" key={v.id}><h3>{v.plate} · {v.brand} {v.model}</h3><p>{v.current_driver_name || 'Sin conductor'} · {v.primary_work_name || 'Sin obra'} · {v.status}</p><p>Solred: {v.solred_cards?.[0]?.card_number || 'sin tarjeta'}</p>{canEdit(profile)&&<button onClick={()=>setSelected(v)}>Modificar</button>}</article>)}</div></section>
+}
+
+function Assignments({ profile }) {
+  const [vehicles, setVehicles] = useState([])
+  const [profiles, setProfiles] = useState([])
+  const [assignments, setAssignments] = useState([])
+  const [form, setForm] = useState({
+    vehicle_id: '',
+    driver_user_id: '',
+    driver_name: '',
+    work_name: '',
+    start_date: new Date().toISOString().slice(0, 10),
+    end_date: '',
+    notes: ''
+  })
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  function patch(k, v) {
+    setForm(f => ({ ...f, [k]: v }))
+  }
+
+  async function load() {
+    const { data: vehicleData, error: vehicleError } = await supabase
+      .from('vehicles')
+      .select('id,plate,brand,model,current_driver_name,primary_work_name,status')
+      .eq('status', 'activo')
+      .order('plate')
+
+    if (vehicleError) alert(vehicleError.message)
+    else setVehicles(vehicleData || [])
+
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('id,full_name,email,role,active')
+      .eq('active', true)
+      .order('full_name')
+
+    if (profileError) alert(profileError.message)
+    else setProfiles(profileData || [])
+
+    const { data: assignmentData, error: assignmentError } = await supabase
+      .from('vehicle_assignments')
+      .select('*, vehicles(plate,brand,model)')
+      .order('start_date', { ascending: false })
+
+    if (assignmentError) alert(assignmentError.message)
+    else setAssignments(assignmentData || [])
+  }
+
+  async function save(e) {
+    e.preventDefault()
+
+    const payload = {
+      vehicle_id: form.vehicle_id,
+      driver_user_id: form.driver_user_id || null,
+      driver_name: form.driver_name,
+      work_name: form.work_name,
+      start_date: form.start_date,
+      end_date: form.end_date || null
+    }
+
+    const { error } = await supabase
+      .from('vehicle_assignments')
+      .insert(payload)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+
+    if (!form.end_date || form.end_date >= today) {
+      await supabase
+        .from('vehicles')
+        .update({
+          current_driver_name: form.driver_name,
+          primary_work_name: form.work_name
+        })
+        .eq('id', form.vehicle_id)
+    }
+
+    alert('Asignación registrada')
+
+    setForm({
+      vehicle_id: '',
+      driver_user_id: '',
+      driver_name: '',
+      work_name: '',
+      start_date: new Date().toISOString().slice(0, 10),
+      end_date: '',
+      notes: ''
+    })
+
+    load()
+  }
+
+  function onDriverChange(value) {
+    const user = profiles.find(p => p.id === value)
+
+    patch('driver_user_id', value)
+
+    if (user) {
+      patch('driver_name', user.full_name || user.email)
+    }
+  }
+
+  if (!canEdit(profile)) {
+    return (
+      <section className="card">
+        <h2>Asignaciones</h2>
+        <p>No tienes permisos para gestionar asignaciones.</p>
+      </section>
+    )
+  }
+
+  return (
+    <section>
+      <form className="card" onSubmit={save}>
+        <h2>Nueva asignación</h2>
+        <p className="muted">
+          Usa este formulario cuando un vehículo cambie de conductor, de obra o ambos.
+          Si hay un cambio dentro del mismo mes, registra una asignación para cada periodo.
+        </p>
+
+        <label>
+          Vehículo
+          <select
+            required
+            value={form.vehicle_id}
+            onChange={e => patch('vehicle_id', e.target.value)}
+          >
+            <option value="">Seleccionar</option>
+            {vehicles.map(v => (
+              <option key={v.id} value={v.id}>
+                {v.plate} · {v.brand} {v.model}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="formgrid">
+          <label>
+            Usuario conductor
+            <select
+              value={form.driver_user_id}
+              onChange={e => onDriverChange(e.target.value)}
+            >
+              <option value="">Sin usuario vinculado</option>
+              {profiles.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.full_name || p.email} · {p.role}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Nombre conductor
+            <input
+              required
+              value={form.driver_name}
+              onChange={e => patch('driver_name', e.target.value)}
+              placeholder="Nombre del conductor"
+            />
+          </label>
+
+          <label>
+            Obra
+            <input
+              required
+              value={form.work_name}
+              onChange={e => patch('work_name', e.target.value)}
+              placeholder="Nombre de obra"
+            />
+          </label>
+        </div>
+
+        <div className="formgrid">
+          <label>
+            Fecha inicio
+            <input
+              type="date"
+              required
+              value={form.start_date}
+              onChange={e => patch('start_date', e.target.value)}
+            />
+          </label>
+
+          <label>
+            Fecha fin
+            <input
+              type="date"
+              value={form.end_date}
+              onChange={e => patch('end_date', e.target.value)}
+            />
+          </label>
+        </div>
+
+        <button>Guardar asignación</button>
+      </form>
+
+      <section className="card">
+        <h2>Histórico de asignaciones</h2>
+        <div className="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Vehículo</th>
+                <th>Conductor</th>
+                <th>Obra</th>
+                <th>Inicio</th>
+                <th>Fin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {assignments.map(a => (
+                <tr key={a.id}>
+                  <td>{a.vehicles?.plate || ''} · {a.vehicles?.brand || ''} {a.vehicles?.model || ''}</td>
+                  <td>{a.driver_name || ''}</td>
+                  <td>{a.work_name || ''}</td>
+                  <td>{a.start_date || ''}</td>
+                  <td>{a.end_date || 'Actual'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  )
 }
 
 function VehicleEditor({ vehicle, onDone }) {
