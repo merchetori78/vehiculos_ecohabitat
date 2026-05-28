@@ -456,9 +456,9 @@ function Reports({ profile }) {
     }
 
     const { data: incidentData, error: incidentError } = await supabase
-      .from('incidents')
-      .select('*, vehicles(plate, vehicle_name)')
-      .neq('status', 'cerrada')
+  .from('incidents')
+  .select('*, vehicles(plate, vehicle_name), files(id,file_name,file_type,storage_path)')
+  .neq('status', 'cerrada')
 
     if (incidentError) {
       alert(incidentError.message)
@@ -677,6 +677,7 @@ function Reports({ profile }) {
                 <th>Gravedad</th>
                 <th>Estado</th>
                 <th>Descripción</th>
+<th>PDF</th>
               </tr>
             </thead>
             <tbody>
@@ -769,6 +770,11 @@ function Reports({ profile }) {
                 <td>{i.severity || ''}</td>
                 <td>{i.status || ''}</td>
                 <td>{i.description || ''}</td>
+<td>
+  <button type="button" className="secondary" onClick={() => generateIncidentPdf(i)}>
+    PDF incidencia
+  </button>
+</td>
               </tr>
             ))}
           </tbody>
@@ -776,6 +782,175 @@ function Reports({ profile }) {
       </div>
     </section>
   )
+}
+async function generateIncidentPdf(incident) {
+  const printWindow = window.open('', '_blank')
+
+  if (!printWindow) {
+    alert('El navegador ha bloqueado la ventana de impresión. Permite ventanas emergentes para generar el PDF.')
+    return
+  }
+
+  const files = incident.files || []
+  const imageBlocks = []
+
+  for (const file of files) {
+    if (!file.storage_path) continue
+
+    const { data, error } = await supabase.storage
+      .from('vehiculos')
+      .createSignedUrl(file.storage_path, 60)
+
+    if (!error && data?.signedUrl) {
+      imageBlocks.push(`
+        <div class="photo-block">
+          <p class="photo-title">${file.file_name || 'Evidencia fotográfica'}</p>
+          <img src="${data.signedUrl}" />
+        </div>
+      `)
+    }
+  }
+
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>Informe incidencia ${incident.vehicles?.plate || ''}</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 32px;
+            color: #123c2c;
+          }
+
+          header {
+            border-bottom: 2px solid #123c2c;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 24px;
+          }
+
+          h2 {
+            margin-top: 24px;
+            font-size: 18px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 12px;
+          }
+
+          th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+          }
+
+          th {
+            width: 180px;
+            background: #e9f1ed;
+          }
+
+          .meta {
+            font-size: 12px;
+            color: #555;
+          }
+
+          .description {
+            white-space: pre-wrap;
+          }
+
+          .photo-block {
+            page-break-inside: avoid;
+            margin-top: 18px;
+          }
+
+          .photo-title {
+            font-size: 12px;
+            color: #555;
+            margin-bottom: 6px;
+          }
+
+          img {
+            max-width: 100%;
+            max-height: 700px;
+            border: 1px solid #ccc;
+          }
+
+          .footer {
+            margin-top: 32px;
+            font-size: 11px;
+            color: #666;
+          }
+        </style>
+      </head>
+      <body>
+        <header>
+          <h1>Informe individual de incidencia</h1>
+          <p class="meta">Eco Habitat · Generado el ${new Date().toLocaleDateString('es-ES')}</p>
+        </header>
+
+        <h2>Datos de la incidencia</h2>
+        <table>
+          <tbody>
+            <tr>
+              <th>Fecha</th>
+              <td>${incident.incident_date || ''}</td>
+            </tr>
+            <tr>
+              <th>Matrícula</th>
+              <td>${incident.vehicles?.plate || ''}</td>
+            </tr>
+            <tr>
+              <th>Vehículo</th>
+              <td>${incident.vehicles?.vehicle_name || ''}</td>
+            </tr>
+            <tr>
+              <th>Obra</th>
+              <td>${incident.work_name || ''}</td>
+            </tr>
+            <tr>
+              <th>Tipo</th>
+              <td>${incident.type || ''}</td>
+            </tr>
+            <tr>
+              <th>Gravedad</th>
+              <td>${incident.severity || ''}</td>
+            </tr>
+            <tr>
+              <th>Estado</th>
+              <td>${incident.status || ''}</td>
+            </tr>
+            <tr>
+              <th>Descripción</th>
+              <td class="description">${incident.description || ''}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2>Evidencias fotográficas</h2>
+        ${imageBlocks.length ? imageBlocks.join('') : '<p>No hay imágenes asociadas a esta incidencia.</p>'}
+
+        <p class="footer">
+          Documento generado desde la aplicación de control de vehículos como evidencia para seguimiento,
+          trazabilidad y revisión del sistema de gestión ISO 9001 / ISO 14001.
+        </p>
+
+        <script>
+          window.onload = () => window.print()
+        </script>
+      </body>
+    </html>
+  `)
+
+  printWindow.document.close()
 }
 function canEdit(profile){ return ['admin','flota','jefe_obra'].includes(profile?.role) }
 
