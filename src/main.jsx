@@ -91,6 +91,7 @@ function Shell({ children, profile }) {
 }
 function Login() {
   const [email, setEmail] = useState('')
+const [showPassword, setShowPassword] = useState(false)
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   async function signIn(e){
@@ -98,7 +99,26 @@ function Login() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     setMessage(error ? error.message : '')
   }
-  return <Shell><form className="card" onSubmit={signIn}><h2>Entrar</h2><label>Email<input value={email} onChange={e=>setEmail(e.target.value)} type="email" required/></label><label>Contraseña<input value={password} onChange={e=>setPassword(e.target.value)} type="password" required/></label><button>Entrar</button><p className="muted">Los usuarios se crean desde Supabase o desde el panel de administración que añadiremos después.</p>{message && <p>{message}</p>}</form></Shell>
+  return <Shell><form className="card" onSubmit={signIn}><h2>Entrar</h2><label>Email<input value={email} onChange={e=>setEmail(e.target.value)} type="email" required/></label><label>
+  Contraseña
+  <div className="password-field">
+    <input
+      value={password}
+      onChange={e => setPassword(e.target.value)}
+      type={showPassword ? 'text' : 'password'}
+      required
+    />
+    <button
+      type="button"
+      className="password-toggle"
+      onClick={() => setShowPassword(v => !v)}
+      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+      title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+    >
+      {showPassword ? '🙈' : '👁️'}
+    </button>
+  </div>
+</label><button>Entrar</button><p className="muted">Los usuarios se crean desde Supabase o desde el panel de administración que añadiremos después.</p>{message && <p>{message}</p>}</form></Shell>
 }
 
 function Dashboard({ profile }) {
