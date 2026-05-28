@@ -42,7 +42,14 @@ function App() {
   return (
     <Shell profile={profile}>
       <nav className="tabs">
-        {['inicio','vehiculos','asignaciones','kilometros','incidencias','informes'].map(t => (
+        {[
+  'inicio',
+  'vehiculos',
+  'asignaciones',
+  'kilometros',
+  'incidencias',
+  ...(canSeeReports(profile) ? ['informes'] : [])
+].map(t => (
           <button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{label(t)}</button>
         ))}
       </nav>
@@ -50,8 +57,8 @@ function App() {
       {tab === 'vehiculos' && <Vehicles profile={profile} />}
 {tab === 'asignaciones' && <Assignments profile={profile} />}
       {tab === 'kilometros' && <KmForm profile={profile} />}
-      {tab === 'incidencias' && <IncidentForm profile={profile} />}
-      {tab === 'informes' && <Reports profile={profile} />}
+      {tab === 'incidencias' && <IncidentsPage profile={profile} />}
+      {tab === 'informes' && canSeeReports(profile) && <Reports profile={profile} />}
     </Shell>
   )
 }
@@ -399,7 +406,7 @@ const rows = validAllocations.map((a) => {
   return <form className="card" onSubmit={save}><h2>Kilómetros mensuales</h2><label>Vehículo<select required value={form.vehicle_id||''} onChange={e=>patch('vehicle_id',e.target.value)}><option value="">Seleccionar</option>{vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} · {v.brand} {v.model}</option>)}</select></label><div className="formgrid"><label>Mes<input type="month" value={form.month} onChange={e=>patch('month',e.target.value)} required/></label><label>Km iniciales<input type="number" value={form.km_start||''} onChange={e=>patch('km_start',e.target.value)} required/></label><label>Km finales<input type="number" value={form.km_end||''} onChange={e=>patch('km_end',e.target.value)} required/></label></div><h3>Imputación a obras</h3>{form.allocations.map((a,i)=><div className="inline" key={i}><input placeholder="Nombre de obra" value={a.work_name} onChange={e=>{const arr=[...form.allocations];arr[i].work_name=e.target.value;patch('allocations',arr)}}/><input type="number" placeholder="Km" value={a.km_allocated} onChange={e=>{const arr=[...form.allocations];arr[i].km_allocated=e.target.value;patch('allocations',arr)}}/></div>)}<button type="button" className="secondary" onClick={()=>patch('allocations',[...form.allocations,{work_name:'',km_allocated:''}])}>Añadir otra obra</button><label>Observaciones<textarea value={form.notes||''} onChange={e=>patch('notes',e.target.value)}/></label><button>Guardar kilómetros</button></form>
 }
 
-function IncidentForm({ profile }) {
+function IncidentForm({ profile, onSaved }) {
   const [vehicles,setVehicles]=useState([]); const [form,setForm]=useState({severity:'leve',status:'abierta'}); const [photo,setPhoto]=useState(null)
   useEffect(()=>{supabase.from('vehicles').select('id,plate,brand,model').eq('status','activo').then(({data})=>setVehicles(data||[]))},[])
   function patch(k,v){setForm(f=>({...f,[k]:v}))}
@@ -434,9 +441,197 @@ function IncidentForm({ profile }) {
   }
 }
     alert('Incidencia registrada')
-    setForm({severity:'leve',status:'abierta'}); setPhoto(null)
+setForm({severity:'leve',status:'abierta'})
+setPhoto(null)
+if (onSaved) onSaved()
   }
   return <form className="card" onSubmit={save}><h2>Nueva incidencia</h2><label>Vehículo<select required value={form.vehicle_id||''} onChange={e=>patch('vehicle_id',e.target.value)}><option value="">Seleccionar</option>{vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} · {v.brand} {v.model}</option>)}</select></label><div className="formgrid"><label>Obra<input value={form.work_name||''} onChange={e=>patch('work_name',e.target.value)}/></label><label>Tipo<select value={form.type||''} onChange={e=>patch('type',e.target.value)} required><option value="">Seleccionar</option><option>Avería</option><option>Accidente</option><option>Daño exterior</option><option>Neumáticos</option><option>ITV</option><option>Documentación</option><option>Tarjeta SOLRED</option><option>Otra</option></select></label><label>Gravedad<select value={form.severity} onChange={e=>patch('severity',e.target.value)}><option>leve</option><option>media</option><option>grave</option></select></label></div><label>Descripción<textarea required value={form.description||''} onChange={e=>patch('description',e.target.value)}/></label><label>Foto<input type="file" accept="image/*" capture="environment" onChange={e=>setPhoto(e.target.files?.[0])}/></label><button>Registrar incidencia</button></form>
+}
+
+function IncidentsPage({ profile }) {
+  const [reloadKey, setReloadKey] = useState(0)
+
+  return (
+    <section>
+      <IncidentForm
+        profile={profile}
+        onSaved={() => setReloadKey(k => k + 1)}
+      />
+
+      <IncidentList
+        profile={profile}
+        reloadKey={reloadKey}
+      />
+    </section>
+  )
+}
+
+function IncidentList({ profile, reloadKey }) {
+  const [incidents, setIncidents] = useState([])
+  const [editing, setEditing] = useState(null)
+
+  useEffect(() => {
+    load()
+  }, [reloadKey])
+
+  async function load() {
+    const { data, error } = await supabase
+      .from('incidents')
+      .select('*, vehicles(plate, vehicle_name)')
+      .order('incident_date', { ascending: false })
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    setIncidents(data || [])
+  }
+
+  async function saveClose(e) {
+    e.preventDefault()
+
+    const payload = {
+      status: editing.status,
+      corrective_action: editing.corrective_action || null,
+      corrective_responsible: editing.corrective_responsible || null,
+      closed_at: editing.closed_at || null,
+      closing_notes: editing.closing_notes || null
+    }
+
+    const { error } = await supabase
+      .from('incidents')
+      .update(payload)
+      .eq('id', editing.id)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    alert('Incidencia actualizada')
+    setEditing(null)
+    load()
+  }
+
+  if (!canEdit(profile)) {
+    return null
+  }
+
+  return (
+    <section className="card">
+      <h2>Gestión de incidencias</h2>
+      <p className="muted">
+        Desde aquí puedes revisar incidencias, registrar acciones correctivas y cerrar incidencias.
+      </p>
+
+      {editing && (
+        <form className="card" onSubmit={saveClose}>
+          <h3>Cerrar / actualizar incidencia</h3>
+
+          <p>
+            <b>{editing.vehicles?.plate || ''}</b> · {editing.type || ''} · {editing.description || ''}
+          </p>
+
+          <div className="formgrid">
+            <label>
+              Estado
+              <select
+                value={editing.status || 'abierta'}
+                onChange={e => setEditing(i => ({ ...i, status: e.target.value }))}
+              >
+                <option value="abierta">abierta</option>
+                <option value="en revisión">en revisión</option>
+                <option value="cerrada">cerrada</option>
+              </select>
+            </label>
+
+            <label>
+              Fecha de cierre
+              <input
+                type="date"
+                value={editing.closed_at || ''}
+                onChange={e => setEditing(i => ({ ...i, closed_at: e.target.value }))}
+              />
+            </label>
+
+            <label>
+              Responsable
+              <input
+                value={editing.corrective_responsible || ''}
+                onChange={e => setEditing(i => ({ ...i, corrective_responsible: e.target.value }))}
+                placeholder="Responsable de cierre o seguimiento"
+              />
+            </label>
+          </div>
+
+          <label>
+            Acción correctiva
+            <textarea
+              value={editing.corrective_action || ''}
+              onChange={e => setEditing(i => ({ ...i, corrective_action: e.target.value }))}
+              placeholder="Describe la acción correctiva aplicada"
+            />
+          </label>
+
+          <label>
+            Observaciones de cierre
+            <textarea
+              value={editing.closing_notes || ''}
+              onChange={e => setEditing(i => ({ ...i, closing_notes: e.target.value }))}
+              placeholder="Observaciones adicionales, comprobaciones, reparación, sustitución, etc."
+            />
+          </label>
+
+          <button>Guardar cambios</button>
+          <button type="button" className="secondary" onClick={() => setEditing(null)}>
+            Cancelar
+          </button>
+        </form>
+      )}
+
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Matrícula</th>
+              <th>Vehículo</th>
+              <th>Obra</th>
+              <th>Tipo</th>
+              <th>Gravedad</th>
+              <th>Estado</th>
+              <th>Descripción</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {incidents.map(i => (
+              <tr key={i.id}>
+                <td>{i.incident_date || ''}</td>
+                <td>{i.vehicles?.plate || ''}</td>
+                <td>{i.vehicles?.vehicle_name || ''}</td>
+                <td>{i.work_name || ''}</td>
+                <td>{i.type || ''}</td>
+                <td>{i.severity || ''}</td>
+                <td>{i.status || ''}</td>
+                <td>{i.description || ''}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setEditing(i)}
+                  >
+                    Gestionar
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
 }
 
 function Reports({ profile }) {
@@ -458,7 +653,7 @@ function Reports({ profile }) {
     const { data: incidentData, error: incidentError } = await supabase
   .from('incidents')
   .select('*, vehicles(plate, vehicle_name), files(id,file_name,file_type,storage_path)')
-  .neq('status', 'cerrada')
+  .order('incident_date', { ascending: false })
 
     if (incidentError) {
       alert(incidentError.message)
@@ -530,7 +725,7 @@ function Reports({ profile }) {
       descripcion: i.description || ''
     }))
 
-    downloadCsv('informe_incidencias_abiertas.csv', rows)
+    downloadCsv('historico_incidencias.csv', rows)
   }
 
   function generateIsoPdf() {
@@ -740,7 +935,7 @@ function Reports({ profile }) {
         </table>
       </div>
 
-      <h3>Incidencias abiertas</h3>
+      <h3>Histórico de incidencias</h3>
       <button type="button" className="secondary" onClick={exportIncidentsCsv}>
         Exportar incidencias CSV
       </button>
@@ -948,6 +1143,22 @@ img {
               <th>Descripción</th>
               <td class="description">${incident.description || ''}</td>
             </tr>
+<tr>
+  <th>Acción correctiva</th>
+  <td class="description">${incident.corrective_action || ''}</td>
+</tr>
+<tr>
+  <th>Responsable</th>
+  <td>${incident.corrective_responsible || ''}</td>
+</tr>
+<tr>
+  <th>Fecha de cierre</th>
+  <td>${incident.closed_at ? String(incident.closed_at).slice(0, 10) : ''}</td>
+</tr>
+<tr>
+  <th>Observaciones de cierre</th>
+  <td class="description">${incident.closing_notes || ''}</td>
+</tr>
           </tbody>
         </table>
 
@@ -970,6 +1181,11 @@ img {
 
   printWindow.document.close()
 }
+
+function canSeeReports(profile) {
+  return ['admin', 'flota'].includes(profile?.role)
+}
+
 function canEdit(profile){ return ['admin','flota','jefe_obra'].includes(profile?.role) }
 
 createRoot(document.getElementById('root')).render(<App />)
