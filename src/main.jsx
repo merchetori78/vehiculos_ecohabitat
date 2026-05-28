@@ -867,22 +867,38 @@ async function generateIncidentPdf(incident) {
             white-space: pre-wrap;
           }
 
-          .photo-block {
-            page-break-inside: avoid;
-            margin-top: 18px;
-          }
+          .evidence-section {
+  break-before: page;
+  page-break-before: always;
+}
 
-          .photo-title {
-            font-size: 12px;
-            color: #555;
-            margin-bottom: 6px;
-          }
+.evidence-title {
+  break-after: avoid;
+  page-break-after: avoid;
+}
 
-          img {
-            max-width: 100%;
-            max-height: 700px;
-            border: 1px solid #ccc;
-          }
+.photo-block {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  margin-top: 18px;
+}
+
+.photo-title {
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 6px;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  max-height: 640px;
+  border: 1px solid #ccc;
+  break-before: avoid;
+  page-break-before: avoid;
+}
 
           .footer {
             margin-top: 32px;
@@ -935,8 +951,10 @@ async function generateIncidentPdf(incident) {
           </tbody>
         </table>
 
-        <h2>Evidencias fotográficas</h2>
-        ${imageBlocks.length ? imageBlocks.join('') : '<p>No hay imágenes asociadas a esta incidencia.</p>'}
+        <section class="evidence-section">
+  <h2 class="evidence-title">Evidencias fotográficas</h2>
+  ${imageBlocks.length ? imageBlocks.join('') : '<p>No hay imágenes asociadas a esta incidencia.</p>'}
+</section>
 
         <p class="footer">
           Documento generado desde la aplicación de control de vehículos como evidencia para seguimiento,
