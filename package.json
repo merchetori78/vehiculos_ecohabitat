@@ -1,0 +1,23 @@
+{
+  "name": "ecohabitat-flota",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "import:excel": "node scripts/importExcel.js sample-data/flota_solred.xlsx"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "latest",
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "xlsx": "latest",
+    "jspdf": "latest",
+    "jspdf-autotable": "latest"
+  },
+  "devDependencies": {}
+}
