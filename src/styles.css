@@ -1,4 +1,4 @@
-:root{font-family:Inter,system-ui,Arial,sans-serif;color:#173326;background:#f4f7f5}*{box-sizing:border-box}body{margin:0}.app{max-width:980px;margin:0 auto;padding:14px}header{display:flex;gap:14px;align-items:center;background:white;border-radius:22px;padding:14px 16px;box-shadow:0 8px 30px #17332612;margin-bottom:14px}header img{width:118px;object-fit:contain}h1{font-size:1.35rem;margin:0;color:#1f4d3a}h2,h3{color:#1f4d3a}.tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}.tabs button,.card button,.toolbar button{border:0;border-radius:16px;padding:12px 10px;background:#dfe9e3;color:#1f4d3a;font-weight:700}.tabs button.active,button{background:#1f4d3a!important;color:white!important}.secondary{background:#dfe9e3!important;color:#1f4d3a!important}.card{background:white;border-radius:22px;padding:16px;margin-bottom:14px;box-shadow:0 8px 30px #17332612}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.kpi b{display:block;font-size:2.4rem}.kpi span{color:#5b6b61}.toolbar{display:flex;align-items:center;justify-content:space-between}.list{display:grid;gap:10px}.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}label{display:grid;gap:6px;font-weight:700;margin:10px 0}input,select,textarea{width:100%;padding:12px;border:1px solid #cad8ce;border-radius:14px;font:inherit}textarea{min-height:96px}.inline{display:grid;grid-template-columns:1fr 120px;gap:8px;margin-bottom:8px}.muted{color:#65726a;font-size:.9rem}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{border-bottom:1px solid #e4ece7;padding:9px;text-align:left}@media(max-width:640px){.app{padding:10px}header img{width:92px}.tabs{grid-template-columns:repeat(3,1fr)}.inline{grid-template-columns:1fr}}.password-field {
+:root{font-family:Inter,system-ui,Arial,sans-serif;color:#173326;background:#f4f7f5}*{box-sizing:border-box}body{margin:0}.app{max-width:980px;margin:0 auto;padding:14px}header{display:flex;gap:14px;align-items:center;background:white;border-radius:22px;padding:14px 16px;box-shadow:0 8px 30px #17332612;margin-bottom:14px}header img{width:118px;object-fit:contain}h1{font-size:1.35rem;margin:0;color:#1f4d3a}h2,h3{color:#1f4d3a}.tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px}.tabs button,.card button,.toolbar button{border:0;border-radius:16px;padding:12px 10px;background:#dfe9e3;color:#1f4d3a;font-weight:700}.tabs button.active,button{background:#1f4d3a!important;color:white!important}.secondary{background:#dfe9e3!important;color:#1f4d3a!important}.card{background:white;border-radius:22px;padding:16px;margin-bottom:14px;box-shadow:0 8px 30px #17332612}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.kpi b{display:block;font-size:2.4rem}.kpi span{color:#5b6b61}.toolbar{display:flex;align-items:center;justify-content:space-between}.list{display:grid;gap:10px}.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}label{display:grid;gap:6px;font-weight:700;margin:10px 0}input,select,textarea{width:100%;padding:12px;border:1px solid #cad8ce;border-radius:14px;font:inherit}textarea{min-height:96px}.inline{display:grid;grid-template-columns:1fr 120px;gap:8px;margin-bottom:8px}.muted{color:#65726a;font-size:.9rem}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{border-bottom:1px solid #e4ece7;padding:9px;text-align:left}@media(max-width:640px){.app{padding:10px}header img{width:92px}.tabs{grid-template-columns:repeat(3,1fr)}.inline{grid-template-columns:1fr}}.password-field {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -12,4 +12,81 @@
   width: auto;
   padding: 10px 12px;
   white-space: nowrap;
+}
+
+.map {
+  width: 100%;
+  height: 520px;
+  border: 1px solid #cad8ce;
+  border-radius: 18px;
+  overflow: hidden;
+  margin-top: 14px;
+}
+
+.gasolineras-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.gasolineras-stats span {
+  background: #eef5f1;
+  border-radius: 14px;
+  padding: 8px 10px;
+  color: #1f4d3a;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 32px;
+}
+
+.checkbox-label input {
+  width: auto;
+}
+
+.button-link {
+  display: inline-block;
+  margin-top: 6px;
+  margin-left: 6px;
+  padding: 9px 10px;
+  border-radius: 14px;
+  background: #1f4d3a;
+  color: white;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: .9rem;
+}
+
+.error {
+  color: #9b1c1c;
+  background: #fdecec;
+  border-radius: 14px;
+  padding: 10px;
+}
+
+@media(max-width:640px){
+  .map{height:420px}
+  .checkbox-label{margin-top:0}
+}
+
+.location-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.radius-label {
+  min-width: 150px;
+  margin: 0;
+}
+
+@media(max-width:640px){
+  .location-toolbar{align-items:stretch}
+  .location-toolbar button,.radius-label{width:100%}
 }

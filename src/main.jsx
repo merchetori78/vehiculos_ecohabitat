@@ -48,6 +48,7 @@ function App() {
   'asignaciones',
   'kilometros',
   'incidencias',
+  'gasolineras',
   ...(canSeeReports(profile) ? ['informes'] : [])
 ].map(t => (
           <button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{label(t)}</button>
@@ -58,12 +59,13 @@ function App() {
 {tab === 'asignaciones' && <Assignments profile={profile} />}
       {tab === 'kilometros' && <KmForm profile={profile} />}
       {tab === 'incidencias' && <IncidentsPage profile={profile} />}
+      {tab === 'gasolineras' && <GasolinerasPage profile={profile} />}
       {tab === 'informes' && canSeeReports(profile) && <Reports profile={profile} />}
     </Shell>
   )
 }
 
-function label(t){return {inicio:'Inicio',vehiculos:'Vehículos',asignaciones:'Asignaciones',kilometros:'Km',incidencias:'Incidencias',informes:'Informes'}[t]}
+function label(t){return {inicio:'Inicio',vehiculos:'Vehículos',asignaciones:'Asignaciones',kilometros:'Km',incidencias:'Incidencias',gasolineras:'Gasolineras',informes:'Informes'}[t]}
 
 function Shell({ children, profile }) {
   return <div className="app">
@@ -739,6 +741,504 @@ function IncidentList({ profile, reloadKey }) {
       </div>
     </section>
   )
+}
+
+
+function GasolinerasPage() {
+  const [gasolineras, setGasolineras] = useState([])
+  const [loadingGasolineras, setLoadingGasolineras] = useState(true)
+  const [search, setSearch] = useState('')
+  const [province, setProvince] = useState('')
+  const [onlyHabituales, setOnlyHabituales] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [userLocation, setUserLocation] = useState(null)
+  const [locationLoading, setLocationLoading] = useState(false)
+  const [locationError, setLocationError] = useState('')
+  const [radiusKm, setRadiusKm] = useState('')
+  const mapContainerRef = React.useRef(null)
+  const mapRef = React.useRef(null)
+  const markersLayerRef = React.useRef(null)
+
+  useEffect(() => {
+    loadGasolineras()
+  }, [])
+
+  useEffect(() => {
+    renderMap()
+  }, [gasolineras, search, province, onlyHabituales, userLocation, radiusKm])
+
+  async function loadGasolineras() {
+    setLoadingGasolineras(true)
+    setErrorMessage('')
+
+    let allGasolineras = []
+    let from = 0
+    const pageSize = 1000
+    let keepLoading = true
+    let error = null
+
+    while (keepLoading) {
+      const { data, error: batchError } = await supabase
+        .from('gasolineras')
+        .select('codigo,nombre,rotulo,direccion,municipio,provincia,latitud,longitud,descuento,es_habitual,habitual_nombre,google_maps_url,activa')
+        .eq('activa', true)
+        .order('provincia')
+        .order('municipio')
+        .order('nombre')
+        .range(from, from + pageSize - 1)
+
+      if (batchError) {
+        error = batchError
+        keepLoading = false
+      } else {
+        allGasolineras = [...allGasolineras, ...(data || [])]
+        if (!data || data.length < pageSize) keepLoading = false
+        else from += pageSize
+      }
+    }
+
+    if (error) {
+      console.error(error)
+      setErrorMessage(error.message)
+      setGasolineras([])
+    } else {
+      setGasolineras(allGasolineras)
+    }
+
+    setLoadingGasolineras(false)
+  }
+
+  function locateMe() {
+    setLocationError('')
+
+    if (!navigator.geolocation) {
+      setLocationError('Este navegador no permite obtener la ubicación.')
+      return
+    }
+
+    setLocationLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const nextLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        }
+        setUserLocation(nextLocation)
+        setLocationLoading(false)
+
+        if (mapRef.current) {
+          mapRef.current.setView([nextLocation.lat, nextLocation.lng], 12)
+        }
+      },
+      error => {
+        setLocationLoading(false)
+        if (error.code === error.PERMISSION_DENIED) {
+          setLocationError('No se ha podido usar tu ubicación porque el permiso está bloqueado o denegado.')
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          setLocationError('No se ha podido obtener tu ubicación actual.')
+        } else if (error.code === error.TIMEOUT) {
+          setLocationError('La ubicación ha tardado demasiado en responder. Prueba otra vez.')
+        } else {
+          setLocationError(error.message || 'No se ha podido obtener tu ubicación.')
+        }
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    )
+  }
+
+  function clearLocation() {
+    setUserLocation(null)
+    setRadiusKm('')
+    setLocationError('')
+  }
+
+  const filtered = gasolineras
+    .map(g => {
+      const distanceKm = userLocation && hasValidCoords(g)
+        ? getDistanceKm(userLocation.lat, userLocation.lng, Number(g.latitud), Number(g.longitud))
+        : null
+      return { ...g, distanceKm }
+    })
+    .filter(g => {
+      const text = `${g.nombre || ''} ${g.rotulo || ''} ${g.direccion || ''} ${g.municipio || ''} ${g.provincia || ''} ${g.habitual_nombre || ''}`.toLowerCase()
+      const matchesSearch = !search || text.includes(search.toLowerCase())
+      const matchesProvince = !province || g.provincia === province
+      const matchesHabitual = !onlyHabituales || g.es_habitual
+      const matchesRadius = !userLocation || !radiusKm || (g.distanceKm !== null && g.distanceKm <= Number(radiusKm))
+      return matchesSearch && matchesProvince && matchesHabitual && matchesRadius
+    })
+    .sort((a, b) => {
+      if (!userLocation) return 0
+      if (a.distanceKm === null) return 1
+      if (b.distanceKm === null) return -1
+      return a.distanceKm - b.distanceKm
+    })
+
+  const withCoords = filtered.filter(hasValidCoords)
+  const provinces = Array.from(new Set(gasolineras.map(g => g.provincia).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es'))
+
+  async function ensureLeaflet() {
+    if (window.L) return window.L
+
+    await loadCss('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css')
+    await loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js')
+    return window.L
+  }
+
+  async function renderMap() {
+    if (!mapContainerRef.current) return
+    const L = await ensureLeaflet()
+    if (!mapContainerRef.current) return
+
+    if (!mapRef.current) {
+      mapRef.current = L.map(mapContainerRef.current, {
+        scrollWheelZoom: false
+      }).setView([40.2, -3.7], 6)
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(mapRef.current)
+
+      markersLayerRef.current = L.layerGroup().addTo(mapRef.current)
+    }
+
+    markersLayerRef.current.clearLayers()
+
+    const bounds = []
+
+    if (userLocation) {
+      bounds.push([userLocation.lat, userLocation.lng])
+      const userMarker = L.circleMarker([userLocation.lat, userLocation.lng], {
+        radius: 9,
+        weight: 3,
+        fillOpacity: 0.95
+      })
+      userMarker.bindPopup(`
+        <strong>Tu ubicación aproximada</strong><br/>
+        Precisión: ${Math.round(userLocation.accuracy || 0)} m
+      `)
+      userMarker.addTo(markersLayerRef.current)
+    }
+
+    withCoords.forEach(g => {
+      const lat = Number(g.latitud)
+      const lng = Number(g.longitud)
+      bounds.push([lat, lng])
+
+      const marker = L.circleMarker([lat, lng], {
+        radius: g.es_habitual ? 8 : 5,
+        weight: g.es_habitual ? 3 : 1,
+        fillOpacity: g.es_habitual ? 0.9 : 0.65
+      })
+
+      marker.bindPopup(`
+        <strong>${escapeHtml(g.nombre || 'Gasolinera')}</strong><br/>
+        ${g.es_habitual ? '<b>Habitual Eco Habitat</b><br/>' : ''}
+        ${g.distanceKm !== null ? `<b>A ${formatDistance(g.distanceKm)}</b><br/>` : ''}
+        ${escapeHtml(g.direccion || '')}<br/>
+        ${escapeHtml([g.municipio, g.provincia].filter(Boolean).join(', '))}<br/>
+        Descuento: ${escapeHtml(g.descuento ?? '')}<br/>
+        <a href="${g.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}" target="_blank" rel="noreferrer">Cómo llegar</a>
+      `)
+
+      marker.addTo(markersLayerRef.current)
+    })
+
+    if (bounds.length && !userLocation) {
+      if (!province) {
+        mapRef.current.setView([40.2, -3.7], 6)
+      } else {
+        mapRef.current.fitBounds(bounds, {
+          padding: [24, 24],
+          maxZoom: bounds.length === 1 ? 14 : 11
+        })
+      }
+    }
+  }
+
+  function focusGasolinera(g) {
+    const lat = Number(g.latitud)
+    const lng = Number(g.longitud)
+    if (!mapRef.current || !Number.isFinite(lat) || !Number.isFinite(lng)) return
+    mapRef.current.setView([lat, lng], 15)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  return (
+    <section>
+      <div className="toolbar">
+        <h2>Gasolineras con descuento</h2>
+        <button type="button" className="secondary" onClick={loadGasolineras}>Actualizar</button>
+      </div>
+
+      <div className="card">
+        <p className="muted">
+          Red de estaciones preferentes para repostar. Las gasolineras habituales aparecen destacadas en el mapa y en el listado.
+        </p>
+
+        <div className="location-toolbar">
+          <button type="button" onClick={locateMe} disabled={locationLoading}>
+            {locationLoading ? 'Buscando ubicación…' : '📍 Cerca de mí'}
+          </button>
+
+          {userLocation && (
+            <>
+              <label className="radius-label">
+                Radio
+                <select value={radiusKm} onChange={e => setRadiusKm(e.target.value)}>
+                  <option value="">Sin límite</option>
+                  <option value="5">5 km</option>
+                  <option value="10">10 km</option>
+                  <option value="25">25 km</option>
+                  <option value="50">50 km</option>
+                  <option value="100">100 km</option>
+                </select>
+              </label>
+              <button type="button" className="secondary" onClick={clearLocation}>Quitar ubicación</button>
+            </>
+          )}
+        </div>
+
+        {userLocation && (
+          <p className="muted">
+            Ubicación activa. El listado se ordena por distancia y el mapa muestra tu posición aproximada.
+          </p>
+        )}
+        {locationError && <p className="error">{locationError}</p>}
+
+        <div className="formgrid">
+          <label>
+            Buscar
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Nombre, municipio, dirección…" />
+          </label>
+
+          <label>
+            Provincia
+            <select value={province} onChange={e => setProvince(e.target.value)}>
+              <option value="">Todas</option>
+              {provinces.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
+
+          <label className="checkbox-label">
+            <input type="checkbox" checked={onlyHabituales} onChange={e => setOnlyHabituales(e.target.checked)} />
+            Solo habituales
+          </label>
+        </div>
+
+        <div className="gasolineras-stats">
+          <span><b>{filtered.length}</b> estaciones</span>
+          <span><b>{withCoords.length}</b> con mapa</span>
+          <span><b>{filtered.filter(g => g.es_habitual).length}</b> habituales</span>
+          {userLocation && <span><b>{withCoords.filter(g => g.distanceKm !== null).length}</b> con distancia</span>}
+        </div>
+
+        {loadingGasolineras && <p>Cargando gasolineras…</p>}
+        {errorMessage && <p className="error">No se han podido cargar las gasolineras: {errorMessage}</p>}
+
+        <div ref={mapContainerRef} className="map"></div>
+      </div>
+
+      <section className="card">
+        <h3>Listado</h3>
+        <div className="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Estación</th>
+                <th>Municipio</th>
+                <th>Provincia</th>
+                {userLocation && <th>Distancia</th>}
+                <th>Descuento</th>
+                <th>Habitual</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.slice(0, 300).map(g => (
+                <tr key={g.codigo || `${g.nombre}-${g.latitud}-${g.longitud}`}>
+                  <td>
+                    <b>{g.nombre}</b><br />
+                    <span className="muted">{g.direccion}</span>
+                  </td>
+                  <td>{g.municipio || ''}</td>
+                  <td>{g.provincia || ''}</td>
+                  {userLocation && <td>{g.distanceKm !== null ? formatDistance(g.distanceKm) : ''}</td>}
+                  <td>{g.descuento || ''}</td>
+                  <td>{g.es_habitual ? 'Sí' : ''}</td>
+                  <td>
+                    {hasValidCoords(g) && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => focusGasolinera(g)}
+                      >
+                        Ver mapa
+                      </button>
+                    )}
+                    <a
+                      className="button-link"
+                      href={g.google_maps_url || '#'}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Cómo llegar
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+                {filtered.length > 300 && (
+          <p className="muted">
+            Mostrando las primeras 300 estaciones. Usa los filtros para afinar la búsqueda.
+          </p>
+        )}
+      </section>
+    </section>
+  )
+}
+
+function hasValidCoords(g) {
+  const lat = Number(g.latitud)
+  const lng = Number(g.longitud)
+  const provincia = String(g.provincia || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat === 0 ||
+    lng === 0
+  ) {
+    return false
+  }
+
+  const provinceBounds = [
+    { names: ['a coruna', 'la coruna'], minLat: 42.7, maxLat: 43.9, minLng: -9.4, maxLng: -7.6 },
+    { names: ['alava', 'araba'], minLat: 42.4, maxLat: 43.3, minLng: -3.4, maxLng: -2.2 },
+    { names: ['albacete'], minLat: 38.0, maxLat: 39.6, minLng: -3.0, maxLng: -1.0 },
+    { names: ['alicante'], minLat: 37.7, maxLat: 38.9, minLng: -1.2, maxLng: 0.1 },
+    { names: ['almeria'], minLat: 36.6, maxLat: 37.7, minLng: -3.2, maxLng: -1.5 },
+    { names: ['asturias'], minLat: 42.8, maxLat: 43.8, minLng: -7.2, maxLng: -4.4 },
+    { names: ['avila'], minLat: 40.0, maxLat: 41.3, minLng: -5.8, maxLng: -4.0 },
+    { names: ['badajoz'], minLat: 37.8, maxLat: 39.6, minLng: -7.4, maxLng: -4.6 },
+    { names: ['barcelona'], minLat: 41.1, maxLat: 42.4, minLng: 1.2, maxLng: 2.8 },
+    { names: ['burgos'], minLat: 41.6, maxLat: 43.3, minLng: -4.4, maxLng: -2.5 },
+    { names: ['caceres'], minLat: 39.0, maxLat: 40.6, minLng: -7.6, maxLng: -4.9 },
+    { names: ['cadiz'], minLat: 35.9, maxLat: 37.1, minLng: -6.6, maxLng: -5.0 },
+    { names: ['cantabria'], minLat: 42.7, maxLat: 43.6, minLng: -4.9, maxLng: -3.1 },
+    { names: ['castellon', 'castello'], minLat: 39.6, maxLat: 40.9, minLng: -0.9, maxLng: 0.6 },
+    { names: ['ciudad real'], minLat: 38.3, maxLat: 39.7, minLng: -5.4, maxLng: -2.6 },
+    { names: ['cordoba'], minLat: 37.2, maxLat: 38.8, minLng: -5.4, maxLng: -3.8 },
+    { names: ['cuenca'], minLat: 39.2, maxLat: 40.8, minLng: -3.5, maxLng: -1.0 },
+    { names: ['girona', 'gerona'], minLat: 41.6, maxLat: 42.6, minLng: 1.6, maxLng: 3.4 },
+    { names: ['granada'], minLat: 36.6, maxLat: 38.1, minLng: -4.0, maxLng: -2.0 },
+    { names: ['guadalajara'], minLat: 40.1, maxLat: 41.4, minLng: -3.6, maxLng: -1.6 },
+    { names: ['gipuzkoa', 'guipuzcoa'], minLat: 42.8, maxLat: 43.5, minLng: -2.8, maxLng: -1.6 },
+    { names: ['huelva'], minLat: 36.7, maxLat: 38.3, minLng: -7.6, maxLng: -5.9 },
+    { names: ['huesca'], minLat: 41.5, maxLat: 42.9, minLng: -0.9, maxLng: 0.8 },
+    { names: ['illes balears', 'baleares'], minLat: 38.5, maxLat: 40.2, minLng: 1.1, maxLng: 4.4 },
+    { names: ['jaen'], minLat: 37.4, maxLat: 38.6, minLng: -4.3, maxLng: -2.4 },
+    { names: ['la rioja', 'rioja'], minLat: 41.8, maxLat: 42.7, minLng: -3.2, maxLng: -1.7 },
+    { names: ['las palmas'], minLat: 27.6, maxLat: 29.5, minLng: -16.2, maxLng: -13.3 },
+    { names: ['leon'], minLat: 42.1, maxLat: 43.3, minLng: -7.1, maxLng: -4.6 },
+    { names: ['lleida', 'lerida'], minLat: 41.2, maxLat: 42.9, minLng: 0.2, maxLng: 1.9 },
+    { names: ['lugo'], minLat: 42.4, maxLat: 43.8, minLng: -8.0, maxLng: -6.7 },
+    { names: ['madrid'], minLat: 39.9, maxLat: 41.2, minLng: -4.6, maxLng: -3.0 },
+    { names: ['malaga'], minLat: 36.3, maxLat: 37.4, minLng: -5.7, maxLng: -3.8 },
+    { names: ['murcia'], minLat: 37.3, maxLat: 38.6, minLng: -2.5, maxLng: -0.6 },
+    { names: ['navarra'], minLat: 41.8, maxLat: 43.3, minLng: -2.6, maxLng: -0.7 },
+    { names: ['ourense', 'orense'], minLat: 41.8, maxLat: 42.6, minLng: -8.4, maxLng: -6.7 },
+    { names: ['palencia'], minLat: 41.7, maxLat: 43.1, minLng: -5.1, maxLng: -3.8 },
+    { names: ['pontevedra'], minLat: 41.8, maxLat: 42.9, minLng: -9.0, maxLng: -7.7 },
+    { names: ['salamanca'], minLat: 40.2, maxLat: 41.4, minLng: -6.9, maxLng: -5.0 },
+    { names: ['santa cruz', 'tenerife'], minLat: 27.5, maxLat: 29.5, minLng: -18.5, maxLng: -16.0 },
+    { names: ['segovia'], minLat: 40.6, maxLat: 41.6, minLng: -4.8, maxLng: -3.2 },
+    { names: ['sevilla'], minLat: 36.8, maxLat: 38.3, minLng: -6.6, maxLng: -4.6 },
+    { names: ['soria'], minLat: 41.0, maxLat: 42.2, minLng: -3.2, maxLng: -1.6 },
+    { names: ['tarragona'], minLat: 40.4, maxLat: 41.6, minLng: -1.0, maxLng: 1.8 },
+    { names: ['teruel'], minLat: 39.8, maxLat: 41.4, minLng: -1.8, maxLng: 0.4 },
+    { names: ['toledo'], minLat: 39.2, maxLat: 40.4, minLng: -5.4, maxLng: -3.0 },
+    { names: ['valencia'], minLat: 38.7, maxLat: 40.0, minLng: -1.4, maxLng: 0.1 },
+    { names: ['valladolid'], minLat: 41.1, maxLat: 42.4, minLng: -5.4, maxLng: -4.0 },
+    { names: ['bizkaia', 'vizcaya'], minLat: 42.8, maxLat: 43.6, minLng: -3.5, maxLng: -2.4 },
+    { names: ['zamora'], minLat: 41.2, maxLat: 42.4, minLng: -7.2, maxLng: -5.0 },
+    { names: ['zaragoza'], minLat: 40.9, maxLat: 42.5, minLng: -2.0, maxLng: 0.3 }
+  ]
+
+  const bounds = provinceBounds.find((b) =>
+    b.names.some((name) => provincia.includes(name))
+  )
+
+  if (!bounds) {
+    return lat >= 36 && lat <= 44.5 && lng >= -9.8 && lng <= 3.1
+  }
+
+  return (
+    lat >= bounds.minLat &&
+    lat <= bounds.maxLat &&
+    lng >= bounds.minLng &&
+    lng <= bounds.maxLng
+  )
+}
+
+function getDistanceKm(lat1, lng1, lat2, lng2) {
+  const earthRadiusKm = 6371
+  const dLat = toRadians(lat2 - lat1)
+  const dLng = toRadians(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return earthRadiusKm * c
+}
+
+function toRadians(value) {
+  return value * Math.PI / 180
+}
+
+function formatDistance(distanceKm) {
+  if (!Number.isFinite(distanceKm)) return ''
+  if (distanceKm < 1) return `${Math.round(distanceKm * 1000)} m`
+  return `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km`
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`)
+    if (existing) return resolve()
+    const script = document.createElement('script')
+    script.src = src
+    script.onload = resolve
+    script.onerror = reject
+    document.body.appendChild(script)
+  })
+}
+
+function loadCss(href) {
+  return new Promise((resolve) => {
+    const existing = document.querySelector(`link[href="${href}"]`)
+    if (existing) return resolve()
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = href
+    link.onload = resolve
+    document.head.appendChild(link)
+  })
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }
 
 function Reports({ profile }) {
