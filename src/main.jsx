@@ -875,7 +875,7 @@ function GasolinerasPage() {
       return a.distanceKm - b.distanceKm
     })
 
-  const withCoords = filtered.filter(hasValidCoords)
+  const withCoords = filtered.filter(g => hasValidCoords(g, province))
   const provinces = Array.from(new Set(gasolineras.map(g => g.provincia).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es'))
 
   async function ensureLeaflet() {
@@ -1102,10 +1102,10 @@ function GasolinerasPage() {
   )
 }
 
-function hasValidCoords(g) {
+function hasValidCoords(g, selectedProvince = '') {
   const lat = Number(g.latitud)
   const lng = Number(g.longitud)
-  const provincia = String(g.provincia || '')
+  const provinciaFiltro = String(selectedProvince || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -1172,9 +1172,11 @@ function hasValidCoords(g) {
     { names: ['zaragoza'], minLat: 40.9, maxLat: 42.5, minLng: -2.0, maxLng: 0.3 }
   ]
 
-  const bounds = provinceBounds.find((b) =>
-    b.names.some((name) => provincia.includes(name))
-  )
+  const provinciaParaValidar = provinciaFiltro || provincia
+
+const bounds = provinceBounds.find((b) =>
+  b.names.some((name) => provinciaParaValidar.includes(name))
+)
 
   if (!bounds) {
     return lat >= 36 && lat <= 44.5 && lng >= -9.8 && lng <= 3.1
