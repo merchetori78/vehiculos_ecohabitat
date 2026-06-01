@@ -752,6 +752,8 @@ function ReservationsPage({ profile }) {
   const [reservations, setReservations] = useState([])
   const [loadingReservations, setLoadingReservations] = useState(true)
   const [message, setMessage] = useState('')
+  const [reservationView, setReservationView] = useState('list')
+  const [calendarWeekStart, setCalendarWeekStart] = useState(() => getMonday(new Date()))
   const today = new Date().toISOString().slice(0, 10)
   const [form, setForm] = useState({
     vehicle_id: '',
@@ -941,8 +943,23 @@ function ReservationsPage({ profile }) {
     loadReservationsData()
   }
 
+  function goToPreviousWeek() {
+    setCalendarWeekStart(d => addDays(d, -7))
+  }
+
+  function goToNextWeek() {
+    setCalendarWeekStart(d => addDays(d, 7))
+  }
+
+  function goToCurrentWeek() {
+    setCalendarWeekStart(getMonday(new Date()))
+  }
+
   const confirmedReservations = reservations.filter(r => r.status === 'confirmada')
   const cancelledReservations = reservations.filter(r => r.status === 'cancelada')
+  const weekDays = Array.from({ length: 5 }, (_, i) => addDays(calendarWeekStart, i))
+  const weekEnd = addDays(calendarWeekStart, 5)
+  const weekReservations = confirmedReservations.filter(r => reservationOverlapsRange(r, calendarWeekStart, weekEnd))
 
   return (
     <section>
@@ -1026,23 +1043,83 @@ function ReservationsPage({ profile }) {
       </form>
 
       <section className="card">
-        <h3>Reservas confirmadas</h3>
+        <div className="reservations-view-header">
+          <div>
+            <h3>Reservas confirmadas</h3>
+            <p className="muted">Puedes verlas como listado o como calendario laboral de lunes a viernes.</p>
+          </div>
+          <div className="view-toggle">
+            <button type="button" className={reservationView === 'list' ? 'active' : 'secondary'} onClick={() => setReservationView('list')}>
+              Listado
+            </button>
+            <button type="button" className={reservationView === 'calendar' ? 'active' : 'secondary'} onClick={() => setReservationView('calendar')}>
+              Calendario laboral
+            </button>
+          </div>
+        </div>
+
         {loadingReservations && <p>Cargando reservas…</p>}
         {!loadingReservations && !confirmedReservations.length && <p className="muted">No hay reservas confirmadas próximas.</p>}
 
-        <div className="reservation-list">
-          {confirmedReservations.map(r => (
-            <article key={r.id} className="reservation-item">
+        {!loadingReservations && reservationView === 'list' && (
+          <div className="reservation-list">
+            {confirmedReservations.map(r => (
+              <article key={r.id} className="reservation-item">
+                <div>
+                  <h4>{r.vehicles?.plate || ''} · {r.vehicles?.brand || ''} {r.vehicles?.model || ''}</h4>
+                  <p><b>{formatDateTime(r.start_at)}</b> → <b>{formatDateTime(r.end_at)}</b>{r.all_day ? ' · Día completo' : ''}</p>
+                  <p>{r.reserved_by_name || ''}{r.work_name ? ` · ${r.work_name}` : ''}{r.purpose ? ` · ${r.purpose}` : ''}</p>
+                  {r.notes && <p className="muted">{r.notes}</p>}
+                </div>
+                <button type="button" className="secondary" onClick={() => cancelReservation(r)}>Cancelar</button>
+              </article>
+            ))}
+          </div>
+        )}
+
+        {!loadingReservations && reservationView === 'calendar' && (
+          <div className="work-calendar-wrap">
+            <div className="calendar-toolbar">
+              <button type="button" className="secondary" onClick={goToPreviousWeek}>← Semana anterior</button>
               <div>
-                <h4>{r.vehicles?.plate || ''} · {r.vehicles?.brand || ''} {r.vehicles?.model || ''}</h4>
-                <p><b>{formatDateTime(r.start_at)}</b> → <b>{formatDateTime(r.end_at)}</b>{r.all_day ? ' · Día completo' : ''}</p>
-                <p>{r.reserved_by_name || ''}{r.work_name ? ` · ${r.work_name}` : ''}{r.purpose ? ` · ${r.purpose}` : ''}</p>
-                {r.notes && <p className="muted">{r.notes}</p>}
+                <b>Semana del {formatDateOnly(calendarWeekStart)} al {formatDateOnly(addDays(calendarWeekStart, 4))}</b>
+                <p className="muted">Vista laboral de lunes a viernes.</p>
               </div>
-              <button type="button" className="secondary" onClick={() => cancelReservation(r)}>Cancelar</button>
-            </article>
-          ))}
-        </div>
+              <button type="button" className="secondary" onClick={goToCurrentWeek}>Hoy</button>
+              <button type="button" className="secondary" onClick={goToNextWeek}>Semana siguiente →</button>
+            </div>
+
+            <div className="work-calendar">
+              {weekDays.map(day => {
+                const dayReservations = weekReservations
+                  .filter(r => reservationTouchesDay(r, day))
+                  .sort((a, b) => new Date(a.start_at) - new Date(b.start_at))
+
+                return (
+                  <div key={day.toISOString()} className="calendar-day">
+                    <div className="calendar-day-header">
+                      <strong>{formatWeekday(day)}</strong>
+                      <span>{formatDateOnly(day)}</span>
+                    </div>
+
+                    {!dayReservations.length && <p className="muted calendar-empty">Sin reservas</p>}
+
+                    {dayReservations.map(r => (
+                      <article key={`${r.id}-${day.toISOString()}`} className="calendar-reservation">
+                        <span className="calendar-time">{formatReservationForDay(r, day)}</span>
+                        <b>{r.vehicles?.plate || 'Vehículo'}</b>
+                        <span>{r.reserved_by_name || ''}</span>
+                        {r.work_name && <span>{r.work_name}</span>}
+                        {r.purpose && <small>{r.purpose}</small>}
+                        <button type="button" className="secondary calendar-cancel" onClick={() => cancelReservation(r)}>Cancelar</button>
+                      </article>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </section>
 
       {!!cancelledReservations.length && (
@@ -1063,6 +1140,77 @@ function ReservationsPage({ profile }) {
       )}
     </section>
   )
+}
+
+function getMonday(date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  return d
+}
+
+function addDays(date, days) {
+  const d = new Date(date)
+  d.setDate(d.getDate() + days)
+  return d
+}
+
+function startOfDay(date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function endOfDay(date) {
+  const d = startOfDay(date)
+  d.setDate(d.getDate() + 1)
+  return d
+}
+
+function reservationOverlapsRange(reservation, rangeStart, rangeEnd) {
+  const start = new Date(reservation.start_at)
+  const end = new Date(reservation.end_at)
+  return start < rangeEnd && end > rangeStart
+}
+
+function reservationTouchesDay(reservation, day) {
+  return reservationOverlapsRange(reservation, startOfDay(day), endOfDay(day))
+}
+
+function formatDateOnly(value) {
+  return new Date(value).toLocaleDateString('es-ES', {
+    day: '2-digit',
+    month: '2-digit'
+  })
+}
+
+function formatWeekday(value) {
+  return new Date(value).toLocaleDateString('es-ES', {
+    weekday: 'long'
+  })
+}
+
+function formatTimeOnly(value) {
+  return new Date(value).toLocaleTimeString('es-ES', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function formatReservationForDay(reservation, day) {
+  if (reservation.all_day) return 'Día completo'
+
+  const dayStart = startOfDay(day)
+  const dayEnd = endOfDay(day)
+  const start = new Date(reservation.start_at)
+  const end = new Date(reservation.end_at)
+
+  const displayStart = start > dayStart ? start : dayStart
+  const displayEnd = end < dayEnd ? end : dayEnd
+
+  return `${formatTimeOnly(displayStart)} - ${formatTimeOnly(displayEnd)}`
 }
 
 
