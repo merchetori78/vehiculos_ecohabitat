@@ -90,3 +90,58 @@
   .location-toolbar{align-items:stretch}
   .location-toolbar button,.radius-label{width:100%}
 }
+
+.success {
+  color: #17653a;
+  background: #e8f6ee;
+  border-radius: 14px;
+  padding: 10px;
+}
+
+.reservation-checkbox {
+  margin-top: 8px;
+}
+
+.reservation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.reservation-list.compact {
+  gap: 8px;
+}
+
+.reservation-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  border: 1px solid #e4ece7;
+  border-radius: 18px;
+  padding: 12px;
+  background: #fbfdfc;
+}
+
+.reservation-item h4 {
+  margin: 0 0 6px;
+  color: #1f4d3a;
+}
+
+.reservation-item p {
+  margin: 4px 0;
+}
+
+.reservation-item.cancelled {
+  opacity: .75;
+  background: #f7f7f7;
+}
+
+@media(max-width:640px){
+  .reservation-item {
+    display: grid;
+  }
+
+  .reservation-item button {
+    width: 100%;
+  }
+}

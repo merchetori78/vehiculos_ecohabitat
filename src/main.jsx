@@ -46,6 +46,7 @@ function App() {
   'inicio',
   'vehiculos',
   'asignaciones',
+  ...(canReserve(profile) ? ['reservas'] : []),
   'kilometros',
   'incidencias',
   'gasolineras',
@@ -57,6 +58,7 @@ function App() {
       {tab === 'inicio' && <Dashboard profile={profile} />}
       {tab === 'vehiculos' && <Vehicles profile={profile} />}
 {tab === 'asignaciones' && <Assignments profile={profile} />}
+      {tab === 'reservas' && canReserve(profile) && <ReservationsPage profile={profile} />}
       {tab === 'kilometros' && <KmForm profile={profile} />}
       {tab === 'incidencias' && <IncidentsPage profile={profile} />}
       {tab === 'gasolineras' && <GasolinerasPage profile={profile} />}
@@ -65,7 +67,7 @@ function App() {
   )
 }
 
-function label(t){return {inicio:'Inicio',vehiculos:'Vehículos',asignaciones:'Asignaciones',kilometros:'Km',incidencias:'Incidencias',gasolineras:'Gasolineras',informes:'Informes'}[t]}
+function label(t){return {inicio:'Inicio',vehiculos:'Vehículos',asignaciones:'Asignaciones',reservas:'Reservas',kilometros:'Km',incidencias:'Incidencias',gasolineras:'Gasolineras',informes:'Informes'}[t]}
 
 function Shell({ children, profile }) {
   return <div className="app">
@@ -217,6 +219,7 @@ function Vehicles({ profile }) {
             <h3>{v.plate} · {v.brand} {v.model}</h3>
             <p>{v.current_driver_name || 'Sin conductor'} · {v.primary_work_name || 'Sin obra'} · {v.status}</p>
             <p>Solred: {v.solred_cards?.[0]?.card_number || 'sin tarjeta'}</p>
+            <p>Reservable: {v.reservable ? 'Sí' : 'No'}</p>
 
             {canEdit(profile) && (
               <button
@@ -473,11 +476,11 @@ function VehicleEditor({ vehicle, onDone }) {
   function set(k,v){setForm(f=>({...f,[k]:v}))}
   async function save(e){
     e.preventDefault()
-    const payload = { plate: form.plate, brand: form.brand, model: form.model, provider: form.provider, contract_line: form.contract_line, current_driver_name: form.current_driver_name, primary_work_name: form.primary_work_name, status: form.status || 'activo', notes: form.notes }
+    const payload = { plate: form.plate, brand: form.brand, model: form.model, provider: form.provider, contract_line: form.contract_line, current_driver_name: form.current_driver_name, primary_work_name: form.primary_work_name, status: form.status || 'activo', reservable: !!form.reservable, notes: form.notes }
     const res = form.id ? await supabase.from('vehicles').update(payload).eq('id', form.id) : await supabase.from('vehicles').insert(payload)
     if (res.error) alert(res.error.message); else onDone()
   }
-  return <form className="card" onSubmit={save}><h3>{form.id?'Modificar vehículo':'Alta vehículo'}</h3><div className="formgrid"><label>Matrícula<input value={form.plate||''} onChange={e=>set('plate',e.target.value.toUpperCase())} required/></label><label>Marca<input value={form.brand||''} onChange={e=>set('brand',e.target.value)}/></label><label>Modelo<input value={form.model||''} onChange={e=>set('model',e.target.value)}/></label><label>Conductor<input value={form.current_driver_name||''} onChange={e=>set('current_driver_name',e.target.value)}/></label><label>Obra habitual<input value={form.primary_work_name||''} onChange={e=>set('primary_work_name',e.target.value)}/></label><label>Estado<select value={form.status||'activo'} onChange={e=>set('status',e.target.value)}><option>activo</option><option>en revisión</option><option>baja</option></select></label></div><label>Observaciones<textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)}/></label><button>Guardar</button><button type="button" className="secondary" onClick={onDone}>Cancelar</button></form>
+  return <form className="card" onSubmit={save}><h3>{form.id?'Modificar vehículo':'Alta vehículo'}</h3><div className="formgrid"><label>Matrícula<input value={form.plate||''} onChange={e=>set('plate',e.target.value.toUpperCase())} required/></label><label>Marca<input value={form.brand||''} onChange={e=>set('brand',e.target.value)}/></label><label>Modelo<input value={form.model||''} onChange={e=>set('model',e.target.value)}/></label><label>Conductor<input value={form.current_driver_name||''} onChange={e=>set('current_driver_name',e.target.value)}/></label><label>Obra habitual<input value={form.primary_work_name||''} onChange={e=>set('primary_work_name',e.target.value)}/></label><label>Estado<select value={form.status||'activo'} onChange={e=>set('status',e.target.value)}><option>activo</option><option>en revisión</option><option>baja</option></select></label><label className="checkbox-label"><input type="checkbox" checked={!!form.reservable} onChange={e=>set('reservable',e.target.checked)}/> Reservable</label></div><label>Observaciones<textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)}/></label><button>Guardar</button><button type="button" className="secondary" onClick={onDone}>Cancelar</button></form>
 }
 
 function KmForm({ profile }) {
@@ -739,6 +742,325 @@ function IncidentList({ profile, reloadKey }) {
           </tbody>
         </table>
       </div>
+    </section>
+  )
+}
+
+
+function ReservationsPage({ profile }) {
+  const [vehicles, setVehicles] = useState([])
+  const [reservations, setReservations] = useState([])
+  const [loadingReservations, setLoadingReservations] = useState(true)
+  const [message, setMessage] = useState('')
+  const today = new Date().toISOString().slice(0, 10)
+  const [form, setForm] = useState({
+    vehicle_id: '',
+    reserved_by_name: profile?.full_name || profile?.email || '',
+    work_name: '',
+    purpose: '',
+    start_date: today,
+    start_time: '08:00',
+    end_date: today,
+    end_time: '18:00',
+    all_day: false,
+    notes: ''
+  })
+
+  useEffect(() => {
+    loadReservationsData()
+  }, [])
+
+  function patch(k, v) {
+    setForm(f => ({ ...f, [k]: v }))
+  }
+
+  async function loadReservationsData() {
+    setLoadingReservations(true)
+    setMessage('')
+
+    const { data: vehicleData, error: vehicleError } = await supabase
+      .from('vehicles')
+      .select('id,plate,brand,model,current_driver_name,primary_work_name,status,reservable')
+      .eq('status', 'activo')
+      .eq('reservable', true)
+      .order('plate')
+
+    if (vehicleError) {
+      setMessage(vehicleError.message)
+      setVehicles([])
+    } else {
+      setVehicles(vehicleData || [])
+    }
+
+    const fromDate = new Date()
+    fromDate.setDate(fromDate.getDate() - 1)
+
+    const { data: reservationData, error: reservationError } = await supabase
+      .from('vehicle_reservations')
+      .select('*, vehicles(plate,brand,model,current_driver_name,primary_work_name)')
+      .gte('end_at', fromDate.toISOString())
+      .order('start_at', { ascending: true })
+
+    if (reservationError) {
+      setMessage(reservationError.message)
+      setReservations([])
+    } else {
+      setReservations(reservationData || [])
+    }
+
+    setLoadingReservations(false)
+  }
+
+  function buildReservationDates() {
+    if (!form.start_date || !form.end_date) {
+      throw new Error('Indica fecha de inicio y fecha de fin.')
+    }
+
+    if (form.all_day) {
+      const start = new Date(`${form.start_date}T00:00:00`)
+      const end = new Date(`${form.end_date}T00:00:00`)
+      end.setDate(end.getDate() + 1)
+      return { start, end }
+    }
+
+    if (!form.start_time || !form.end_time) {
+      throw new Error('Indica hora de inicio y hora de fin.')
+    }
+
+    return {
+      start: new Date(`${form.start_date}T${form.start_time}:00`),
+      end: new Date(`${form.end_date}T${form.end_time}:00`)
+    }
+  }
+
+  async function saveReservation(e) {
+    e.preventDefault()
+    setMessage('')
+
+    if (!form.vehicle_id) {
+      setMessage('Selecciona un vehículo reservable.')
+      return
+    }
+
+    if (!form.reserved_by_name.trim()) {
+      setMessage('Indica el nombre de la persona que reserva.')
+      return
+    }
+
+    let dates
+    try {
+      dates = buildReservationDates()
+    } catch (error) {
+      setMessage(error.message)
+      return
+    }
+
+    if (!(dates.end > dates.start)) {
+      setMessage('La fecha/hora de fin debe ser posterior a la de inicio.')
+      return
+    }
+
+    const startIso = dates.start.toISOString()
+    const endIso = dates.end.toISOString()
+
+    const { data: conflicts, error: conflictError } = await supabase
+      .from('vehicle_reservations')
+      .select('id,start_at,end_at,reserved_by_name,work_name,purpose')
+      .eq('vehicle_id', form.vehicle_id)
+      .eq('status', 'confirmada')
+      .lt('start_at', endIso)
+      .gt('end_at', startIso)
+
+    if (conflictError) {
+      setMessage(conflictError.message)
+      return
+    }
+
+    if ((conflicts || []).length) {
+      const c = conflicts[0]
+      setMessage(`No se puede reservar: ya existe una reserva de ${formatDateTime(c.start_at)} a ${formatDateTime(c.end_at)} para ${c.reserved_by_name || 'otra persona'}.`)
+      return
+    }
+
+    const payload = {
+      vehicle_id: form.vehicle_id,
+      reserved_by: profile.id,
+      reserved_by_name: form.reserved_by_name.trim(),
+      work_name: form.work_name || null,
+      purpose: form.purpose || null,
+      start_at: startIso,
+      end_at: endIso,
+      all_day: !!form.all_day,
+      status: 'confirmada',
+      notes: form.notes || null
+    }
+
+    const { error } = await supabase
+      .from('vehicle_reservations')
+      .insert(payload)
+
+    if (error) {
+      if (error.code === '23P01' || String(error.message || '').toLowerCase().includes('overlap')) {
+        setMessage('No se puede reservar: el vehículo ya tiene una reserva confirmada en ese periodo.')
+      } else {
+        setMessage(error.message)
+      }
+      return
+    }
+
+    setMessage('Reserva confirmada correctamente.')
+    setForm(f => ({
+      ...f,
+      vehicle_id: '',
+      work_name: '',
+      purpose: '',
+      notes: ''
+    }))
+    loadReservationsData()
+  }
+
+  async function cancelReservation(reservation) {
+    const ok = window.confirm('¿Cancelar esta reserva?')
+    if (!ok) return
+
+    const { error } = await supabase
+      .from('vehicle_reservations')
+      .update({
+        status: 'cancelada',
+        cancelled_at: new Date().toISOString(),
+        cancelled_by: profile.id
+      })
+      .eq('id', reservation.id)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    setMessage('Reserva cancelada.')
+    loadReservationsData()
+  }
+
+  const confirmedReservations = reservations.filter(r => r.status === 'confirmada')
+  const cancelledReservations = reservations.filter(r => r.status === 'cancelada')
+
+  return (
+    <section>
+      <div className="toolbar">
+        <h2>Reservas de vehículos</h2>
+        <button type="button" className="secondary" onClick={loadReservationsData}>Actualizar</button>
+      </div>
+
+      <form className="card" onSubmit={saveReservation}>
+        <h3>Nueva reserva</h3>
+        <p className="muted">
+          Solo aparecen vehículos marcados como reservables. La reserva se confirma automáticamente si no hay otra reserva solapada.
+        </p>
+
+        {message && <p className={message.includes('correctamente') || message.includes('cancelada') ? 'success' : 'error'}>{message}</p>}
+
+        <div className="formgrid">
+          <label>
+            Vehículo
+            <select required value={form.vehicle_id} onChange={e => patch('vehicle_id', e.target.value)}>
+              <option value="">Seleccionar</option>
+              {vehicles.map(v => (
+                <option key={v.id} value={v.id}>{v.plate} · {v.brand || ''} {v.model || ''}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Persona que reserva
+            <input required value={form.reserved_by_name} onChange={e => patch('reserved_by_name', e.target.value)} />
+          </label>
+
+          <label>
+            Obra
+            <input value={form.work_name} onChange={e => patch('work_name', e.target.value)} placeholder="Obra o centro de trabajo" />
+          </label>
+
+          <label>
+            Motivo
+            <input value={form.purpose} onChange={e => patch('purpose', e.target.value)} placeholder="Reunión, visita, obra…" />
+          </label>
+        </div>
+
+        <label className="checkbox-label reservation-checkbox">
+          <input type="checkbox" checked={form.all_day} onChange={e => patch('all_day', e.target.checked)} />
+          Día completo
+        </label>
+
+        <div className="formgrid">
+          <label>
+            Fecha inicio
+            <input type="date" required value={form.start_date} onChange={e => patch('start_date', e.target.value)} />
+          </label>
+
+          {!form.all_day && (
+            <label>
+              Hora inicio
+              <input type="time" required value={form.start_time} onChange={e => patch('start_time', e.target.value)} />
+            </label>
+          )}
+
+          <label>
+            Fecha fin
+            <input type="date" required value={form.end_date} onChange={e => patch('end_date', e.target.value)} />
+          </label>
+
+          {!form.all_day && (
+            <label>
+              Hora fin
+              <input type="time" required value={form.end_time} onChange={e => patch('end_time', e.target.value)} />
+            </label>
+          )}
+        </div>
+
+        <label>
+          Observaciones
+          <textarea value={form.notes} onChange={e => patch('notes', e.target.value)} placeholder="Detalles adicionales" />
+        </label>
+
+        <button>Confirmar reserva</button>
+      </form>
+
+      <section className="card">
+        <h3>Reservas confirmadas</h3>
+        {loadingReservations && <p>Cargando reservas…</p>}
+        {!loadingReservations && !confirmedReservations.length && <p className="muted">No hay reservas confirmadas próximas.</p>}
+
+        <div className="reservation-list">
+          {confirmedReservations.map(r => (
+            <article key={r.id} className="reservation-item">
+              <div>
+                <h4>{r.vehicles?.plate || ''} · {r.vehicles?.brand || ''} {r.vehicles?.model || ''}</h4>
+                <p><b>{formatDateTime(r.start_at)}</b> → <b>{formatDateTime(r.end_at)}</b>{r.all_day ? ' · Día completo' : ''}</p>
+                <p>{r.reserved_by_name || ''}{r.work_name ? ` · ${r.work_name}` : ''}{r.purpose ? ` · ${r.purpose}` : ''}</p>
+                {r.notes && <p className="muted">{r.notes}</p>}
+              </div>
+              <button type="button" className="secondary" onClick={() => cancelReservation(r)}>Cancelar</button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {!!cancelledReservations.length && (
+        <section className="card">
+          <h3>Reservas canceladas recientes</h3>
+          <div className="reservation-list compact">
+            {cancelledReservations.slice(0, 10).map(r => (
+              <article key={r.id} className="reservation-item cancelled">
+                <div>
+                  <h4>{r.vehicles?.plate || ''} · {r.vehicles?.brand || ''} {r.vehicles?.model || ''}</h4>
+                  <p>{formatDateTime(r.start_at)} → {formatDateTime(r.end_at)}</p>
+                  <p>{r.reserved_by_name || ''}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </section>
   )
 }
@@ -1214,6 +1536,17 @@ function formatDistance(distanceKm) {
   if (!Number.isFinite(distanceKm)) return ''
   if (distanceKm < 1) return `${Math.round(distanceKm * 1000)} m`
   return `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km`
+}
+
+function formatDateTime(value) {
+  if (!value) return ''
+  return new Date(value).toLocaleString('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 function loadScript(src) {
@@ -1799,6 +2132,10 @@ img {
 
 function canSeeReports(profile) {
   return ['admin', 'flota'].includes(profile?.role)
+}
+
+function canReserve(profile) {
+  return ['admin', 'flota', 'jefe_obra'].includes(profile?.role)
 }
 
 function canEdit(profile){ return ['admin','flota','jefe_obra'].includes(profile?.role) }
