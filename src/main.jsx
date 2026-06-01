@@ -1119,28 +1119,73 @@ function hasValidCoords(g) {
     return false
   }
 
-  const isCanarias =
-    provincia.includes('las palmas') ||
-    provincia.includes('santa cruz') ||
-    provincia.includes('tenerife')
+  const provinceBounds = [
+    { names: ['a coruna', 'la coruna'], minLat: 42.7, maxLat: 43.9, minLng: -9.4, maxLng: -7.6 },
+    { names: ['alava', 'araba'], minLat: 42.4, maxLat: 43.3, minLng: -3.4, maxLng: -2.2 },
+    { names: ['albacete'], minLat: 38.0, maxLat: 39.6, minLng: -3.0, maxLng: -1.0 },
+    { names: ['alicante'], minLat: 37.7, maxLat: 38.9, minLng: -1.2, maxLng: 0.1 },
+    { names: ['almeria'], minLat: 36.6, maxLat: 37.7, minLng: -3.2, maxLng: -1.5 },
+    { names: ['asturias'], minLat: 42.8, maxLat: 43.8, minLng: -7.2, maxLng: -4.4 },
+    { names: ['avila'], minLat: 40.0, maxLat: 41.3, minLng: -5.8, maxLng: -4.0 },
+    { names: ['badajoz'], minLat: 37.8, maxLat: 39.6, minLng: -7.4, maxLng: -4.6 },
+    { names: ['barcelona'], minLat: 41.1, maxLat: 42.4, minLng: 1.2, maxLng: 2.8 },
+    { names: ['burgos'], minLat: 41.6, maxLat: 43.3, minLng: -4.4, maxLng: -2.5 },
+    { names: ['caceres'], minLat: 39.0, maxLat: 40.6, minLng: -7.6, maxLng: -4.9 },
+    { names: ['cadiz'], minLat: 35.9, maxLat: 37.1, minLng: -6.6, maxLng: -5.0 },
+    { names: ['cantabria'], minLat: 42.7, maxLat: 43.6, minLng: -4.9, maxLng: -3.1 },
+    { names: ['castellon', 'castello'], minLat: 39.6, maxLat: 40.9, minLng: -0.9, maxLng: 0.6 },
+    { names: ['ciudad real'], minLat: 38.3, maxLat: 39.7, minLng: -5.4, maxLng: -2.6 },
+    { names: ['cordoba'], minLat: 37.2, maxLat: 38.8, minLng: -5.4, maxLng: -3.8 },
+    { names: ['cuenca'], minLat: 39.2, maxLat: 40.8, minLng: -3.5, maxLng: -1.0 },
+    { names: ['girona', 'gerona'], minLat: 41.6, maxLat: 42.6, minLng: 1.6, maxLng: 3.4 },
+    { names: ['granada'], minLat: 36.6, maxLat: 38.1, minLng: -4.0, maxLng: -2.0 },
+    { names: ['guadalajara'], minLat: 40.1, maxLat: 41.4, minLng: -3.6, maxLng: -1.6 },
+    { names: ['gipuzkoa', 'guipuzcoa'], minLat: 42.8, maxLat: 43.5, minLng: -2.8, maxLng: -1.6 },
+    { names: ['huelva'], minLat: 36.7, maxLat: 38.3, minLng: -7.6, maxLng: -5.9 },
+    { names: ['huesca'], minLat: 41.5, maxLat: 42.9, minLng: -0.9, maxLng: 0.8 },
+    { names: ['illes balears', 'baleares'], minLat: 38.5, maxLat: 40.2, minLng: 1.1, maxLng: 4.4 },
+    { names: ['jaen'], minLat: 37.4, maxLat: 38.6, minLng: -4.3, maxLng: -2.4 },
+    { names: ['la rioja', 'rioja'], minLat: 41.8, maxLat: 42.7, minLng: -3.2, maxLng: -1.7 },
+    { names: ['las palmas'], minLat: 27.6, maxLat: 29.5, minLng: -16.2, maxLng: -13.3 },
+    { names: ['leon'], minLat: 42.1, maxLat: 43.3, minLng: -7.1, maxLng: -4.6 },
+    { names: ['lleida', 'lerida'], minLat: 41.2, maxLat: 42.9, minLng: 0.2, maxLng: 1.9 },
+    { names: ['lugo'], minLat: 42.4, maxLat: 43.8, minLng: -8.0, maxLng: -6.7 },
+    { names: ['madrid'], minLat: 39.9, maxLat: 41.2, minLng: -4.6, maxLng: -3.0 },
+    { names: ['malaga'], minLat: 36.3, maxLat: 37.4, minLng: -5.7, maxLng: -3.8 },
+    { names: ['murcia'], minLat: 37.3, maxLat: 38.6, minLng: -2.5, maxLng: -0.6 },
+    { names: ['navarra'], minLat: 41.8, maxLat: 43.3, minLng: -2.6, maxLng: -0.7 },
+    { names: ['ourense', 'orense'], minLat: 41.8, maxLat: 42.6, minLng: -8.4, maxLng: -6.7 },
+    { names: ['palencia'], minLat: 41.7, maxLat: 43.1, minLng: -5.1, maxLng: -3.8 },
+    { names: ['pontevedra'], minLat: 41.8, maxLat: 42.9, minLng: -9.0, maxLng: -7.7 },
+    { names: ['salamanca'], minLat: 40.2, maxLat: 41.4, minLng: -6.9, maxLng: -5.0 },
+    { names: ['santa cruz', 'tenerife'], minLat: 27.5, maxLat: 29.5, minLng: -18.5, maxLng: -16.0 },
+    { names: ['segovia'], minLat: 40.6, maxLat: 41.6, minLng: -4.8, maxLng: -3.2 },
+    { names: ['sevilla'], minLat: 36.8, maxLat: 38.3, minLng: -6.6, maxLng: -4.6 },
+    { names: ['soria'], minLat: 41.0, maxLat: 42.2, minLng: -3.2, maxLng: -1.6 },
+    { names: ['tarragona'], minLat: 40.4, maxLat: 41.6, minLng: -1.0, maxLng: 1.8 },
+    { names: ['teruel'], minLat: 39.8, maxLat: 41.4, minLng: -1.8, maxLng: 0.4 },
+    { names: ['toledo'], minLat: 39.2, maxLat: 40.4, minLng: -5.4, maxLng: -3.0 },
+    { names: ['valencia'], minLat: 38.7, maxLat: 40.0, minLng: -1.4, maxLng: 0.1 },
+    { names: ['valladolid'], minLat: 41.1, maxLat: 42.4, minLng: -5.4, maxLng: -4.0 },
+    { names: ['bizkaia', 'vizcaya'], minLat: 42.8, maxLat: 43.6, minLng: -3.5, maxLng: -2.4 },
+    { names: ['zamora'], minLat: 41.2, maxLat: 42.4, minLng: -7.2, maxLng: -5.0 },
+    { names: ['zaragoza'], minLat: 40.9, maxLat: 42.5, minLng: -2.0, maxLng: 0.3 }
+  ]
 
-  const isBaleares =
-    provincia.includes('illes balears') ||
-    provincia.includes('baleares')
+  const bounds = provinceBounds.find((b) =>
+    b.names.some((name) => provincia.includes(name))
+  )
 
-  // Canarias
-  if (isCanarias) {
-    return lat >= 27.5 && lat <= 29.6 && lng >= -18.6 && lng <= -13.0
+  if (!bounds) {
+    return lat >= 36 && lat <= 44.5 && lng >= -9.8 && lng <= 3.1
   }
 
-  // Baleares
-  if (isBaleares) {
-    return lat >= 38.4 && lat <= 40.3 && lng >= 1.0 && lng <= 4.5
-  }
-
-  // Península: filtro amplio pero seguro.
-  // Permite más gasolineras que el filtro por provincia, pero evita África y coordenadas muy alejadas.
-  return lat >= 35.8 && lat <= 44.5 && lng >= -9.9 && lng <= 3.4
+  return (
+    lat >= bounds.minLat &&
+    lat <= bounds.maxLat &&
+    lng >= bounds.minLng &&
+    lng <= bounds.maxLng
+  )
 }
 
 function getDistanceKm(lat1, lng1, lat2, lng2) {
