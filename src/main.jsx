@@ -1487,7 +1487,6 @@ function GasolinerasPage() {
   const [loadingGasolineras, setLoadingGasolineras] = useState(true)
   const [search, setSearch] = useState('')
   const [province, setProvince] = useState('')
-  const [onlyHabituales, setOnlyHabituales] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [userLocation, setUserLocation] = useState(null)
   const [locationLoading, setLocationLoading] = useState(false)
@@ -1503,7 +1502,7 @@ function GasolinerasPage() {
 
   useEffect(() => {
     renderMap()
-  }, [gasolineras, search, province, onlyHabituales, userLocation, radiusKm])
+  }, [gasolineras, search, province, userLocation, radiusKm])
 
   async function loadGasolineras() {
     setLoadingGasolineras(true)
@@ -1518,7 +1517,7 @@ function GasolinerasPage() {
     while (keepLoading) {
       const { data, error: batchError } = await supabase
         .from('gasolineras')
-        .select('codigo,nombre,rotulo,direccion,municipio,provincia,latitud,longitud,descuento,es_habitual,habitual_nombre,google_maps_url,activa')
+        .select('codigo,codigo_solred,nombre,rotulo,direccion,municipio,provincia,latitud,longitud,descuento,descuento_texto,combustibles_descuento,comunidad_autonoma,codigo_postal,margen,horario,productos,servicios,google_maps_url,activa')
         .eq('activa', true)
         .order('provincia')
         .order('municipio')
@@ -1599,12 +1598,11 @@ function GasolinerasPage() {
       return { ...g, distanceKm }
     })
     .filter(g => {
-      const text = `${g.nombre || ''} ${g.rotulo || ''} ${g.direccion || ''} ${g.municipio || ''} ${g.provincia || ''} ${g.habitual_nombre || ''}`.toLowerCase()
+      const text = `${g.nombre || ''} ${g.rotulo || ''} ${g.direccion || ''} ${g.municipio || ''} ${g.provincia || ''} ${g.codigo_solred || ''} ${g.combustibles_descuento || ''} ${g.horario || ''} ${g.servicios || ''}`.toLowerCase()
       const matchesSearch = !search || text.includes(search.toLowerCase())
       const matchesProvince = !province || g.provincia === province
-      const matchesHabitual = !onlyHabituales || g.es_habitual
       const matchesRadius = !userLocation || !radiusKm || (g.distanceKm !== null && g.distanceKm <= Number(radiusKm))
-      return matchesSearch && matchesProvince && matchesHabitual && matchesRadius
+      return matchesSearch && matchesProvince && matchesRadius
     })
     .sort((a, b) => {
       if (!userLocation) return 0
@@ -1666,18 +1664,20 @@ function GasolinerasPage() {
       bounds.push([lat, lng])
 
       const marker = L.circleMarker([lat, lng], {
-        radius: g.es_habitual ? 8 : 5,
-        weight: g.es_habitual ? 3 : 1,
-        fillOpacity: g.es_habitual ? 0.9 : 0.65
+        radius: 5,
+        weight: 1,
+        fillOpacity: 0.7
       })
 
       marker.bindPopup(`
         <strong>${escapeHtml(g.nombre || 'Gasolinera')}</strong><br/>
-        ${g.es_habitual ? '<b>Habitual Eco Habitat</b><br/>' : ''}
         ${g.distanceKm !== null ? `<b>A ${formatDistance(g.distanceKm)}</b><br/>` : ''}
         ${escapeHtml(g.direccion || '')}<br/>
         ${escapeHtml([g.municipio, g.provincia].filter(Boolean).join(', '))}<br/>
-        Descuento: ${escapeHtml(g.descuento ?? '')}<br/>
+        <b>Descuento:</b> ${escapeHtml(g.descuento_texto || `${g.descuento ?? 6} cts/l`)}<br/>
+        ${g.combustibles_descuento ? `<b>Combustible:</b> ${escapeHtml(g.combustibles_descuento)}<br/>` : ''}
+        ${g.horario ? `<b>Horario:</b> ${escapeHtml(g.horario)}<br/>` : ''}
+        ${g.servicios ? `<b>Servicios:</b> ${escapeHtml(g.servicios)}<br/>` : ''}
         <a href="${g.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}" target="_blank" rel="noreferrer">Cómo llegar</a>
       `)
 
@@ -1707,13 +1707,13 @@ function GasolinerasPage() {
   return (
     <section>
       <div className="toolbar">
-        <h2>Gasolineras con descuento</h2>
+        <h2>Gasolineras Repsol 6 cts/l</h2>
         <button type="button" className="secondary" onClick={loadGasolineras}>Actualizar</button>
       </div>
 
       <div className="card">
         <p className="muted">
-          Red de estaciones preferentes para repostar. Las gasolineras habituales aparecen destacadas en el mapa y en el listado.
+          Red contractual de estaciones Repsol con descuento de 6 cts/l. Consulta el mapa, filtra por provincia o usa tu ubicación para encontrar la estación más cercana.
         </p>
 
         <div className="location-toolbar">
@@ -1760,16 +1760,12 @@ function GasolinerasPage() {
             </select>
           </label>
 
-          <label className="checkbox-label">
-            <input type="checkbox" checked={onlyHabituales} onChange={e => setOnlyHabituales(e.target.checked)} />
-            Solo habituales
-          </label>
         </div>
 
         <div className="gasolineras-stats">
           <span><b>{filtered.length}</b> estaciones</span>
           <span><b>{withCoords.length}</b> con mapa</span>
-          <span><b>{filtered.filter(g => g.es_habitual).length}</b> habituales</span>
+          <span><b>6 cts/l</b> descuento Repsol</span>
           {userLocation && <span><b>{withCoords.filter(g => g.distanceKm !== null).length}</b> con distancia</span>}
         </div>
 
@@ -1789,8 +1785,9 @@ function GasolinerasPage() {
                 <th>Municipio</th>
                 <th>Provincia</th>
                 {userLocation && <th>Distancia</th>}
+                <th>Combustible</th>
+                <th>Horario</th>
                 <th>Descuento</th>
-                <th>Habitual</th>
                 <th>Acción</th>
               </tr>
             </thead>
@@ -1804,8 +1801,9 @@ function GasolinerasPage() {
                   <td>{g.municipio || ''}</td>
                   <td>{g.provincia || ''}</td>
                   {userLocation && <td>{g.distanceKm !== null ? formatDistance(g.distanceKm) : ''}</td>}
-                  <td>{g.descuento || ''}</td>
-                  <td>{g.es_habitual ? 'Sí' : ''}</td>
+                  <td>{g.combustibles_descuento || ''}</td>
+                  <td>{g.horario || ''}</td>
+                  <td>{g.descuento_texto || `${g.descuento || 6} cts/l`}</td>
                   <td>
                     {hasValidCoords(g) && (
                       <button
