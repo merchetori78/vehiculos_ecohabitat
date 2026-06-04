@@ -160,6 +160,8 @@ function Vehicles({ profile }) {
     setVehicles(data || [])
   }
 
+  const vehiclesWithAlerts = vehicles.filter(v => getVehicleAlerts(v).length)
+
   return (
     <section>
       <div className="toolbar">
@@ -194,7 +196,7 @@ function Vehicles({ profile }) {
         {canEdit(profile) && (
           <button
             onClick={() => {
-              setSelected({ status: 'activo' })
+              setSelected({ status: 'activo', ownership_type: 'propio' })
               window.scrollTo({ top: 0, behavior: 'smooth' })
             }}
           >
@@ -202,6 +204,16 @@ function Vehicles({ profile }) {
           </button>
         )}
       </div>
+
+      {!!vehiclesWithAlerts.length && (
+        <div className="alert-summary card">
+          <h3>Atención de mantenimiento</h3>
+          <p>
+            Hay <b>{vehiclesWithAlerts.length}</b> vehículo(s) con avisos de ITV, aceite o ruedas.
+            Aparecen destacados en el listado.
+          </p>
+        </div>
+      )}
 
       {selected && (
         <VehicleEditor
@@ -214,29 +226,61 @@ function Vehicles({ profile }) {
       )}
 
       <div className="list">
-        {vehicles.map(v => (
-          <article className="card" key={v.id}>
-            <h3>{v.plate} · {v.brand} {v.model}</h3>
-            <p>{v.current_driver_name || 'Sin conductor'} · {v.primary_work_name || 'Sin obra'} · {v.status}</p>
-            <p>Solred: {v.solred_cards?.[0]?.card_number || 'sin tarjeta'}</p>
-            <p>Reservable: {v.reservable ? 'Sí' : 'No'}</p>
+        {vehicles.map(v => {
+          const alerts = getVehicleAlerts(v)
+          const ownershipLabel = getOwnershipLabel(v)
 
-            {canEdit(profile) && (
-              <button
-                onClick={() => {
-                  setSelected(v)
-                  window.scrollTo({ top: 0, behavior: 'smooth' })
-                }}
-              >
-                Modificar
-              </button>
-            )}
-          </article>
-        ))}
+          return (
+            <article className={`card vehicle-card ${alerts.length ? 'vehicle-card-alert' : ''}`} key={v.id}>
+              <div className="vehicle-card-header">
+                <div>
+                  <h3>{v.plate} · {v.brand} {v.model}</h3>
+                  <p>{v.current_driver_name || 'Sin conductor'} · {v.primary_work_name || 'Sin obra'} · {v.status}</p>
+                </div>
+                {!!alerts.length && <span className="alert-pill">{alerts.length} aviso(s)</span>}
+              </div>
+
+              {!!alerts.length && (
+                <div className="maintenance-alerts">
+                  {alerts.map((alert, i) => (
+                    <span key={i} className={`maintenance-pill ${alert.level}`}>{alert.text}</span>
+                  ))}
+                </div>
+              )}
+
+              <div className="vehicle-info-grid">
+                <p><b>Km actuales:</b> {formatNumber(v.current_km) || 'sin dato'}</p>
+                <p><b>ITV:</b> {formatDate(v.itv_next_date) || 'sin dato'}</p>
+                <p><b>Aceite:</b> {formatMaintenanceKm(v, 'oil')}</p>
+                <p><b>Ruedas:</b> {formatMaintenanceKm(v, 'tyres')}</p>
+                <p><b>Propiedad:</b> {ownershipLabel}</p>
+                <p><b>Reservable:</b> {v.reservable ? 'Sí' : 'No'}</p>
+              </div>
+
+              {v.renting_end_date && (
+                <p className="muted">Fin renting: {formatDate(v.renting_end_date)}</p>
+              )}
+
+              <p>Solred: {v.solred_cards?.[0]?.card_number || 'sin tarjeta'}</p>
+
+              {canEdit(profile) && (
+                <button
+                  onClick={() => {
+                    setSelected(v)
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }}
+                >
+                  Modificar
+                </button>
+              )}
+            </article>
+          )
+        })}
       </div>
     </section>
   )
 }
+
 function Assignments({ profile }) {
   const [vehicles, setVehicles] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -473,49 +517,273 @@ function Assignments({ profile }) {
 
 function VehicleEditor({ vehicle, onDone }) {
   const [form, setForm] = useState(vehicle)
-  function set(k,v){setForm(f=>({...f,[k]:v}))}
-  async function save(e){
-    e.preventDefault()
-    const payload = { plate: form.plate, brand: form.brand, model: form.model, provider: form.provider, contract_line: form.contract_line, current_driver_name: form.current_driver_name, primary_work_name: form.primary_work_name, status: form.status || 'activo', reservable: !!form.reservable, notes: form.notes }
-    const res = form.id ? await supabase.from('vehicles').update(payload).eq('id', form.id) : await supabase.from('vehicles').insert(payload)
-    if (res.error) alert(res.error.message); else onDone()
+
+  function set(k, v) {
+    setForm(f => ({ ...f, [k]: v }))
   }
-  return <form className="card" onSubmit={save}><h3>{form.id?'Modificar vehículo':'Alta vehículo'}</h3><div className="formgrid"><label>Matrícula<input value={form.plate||''} onChange={e=>set('plate',e.target.value.toUpperCase())} required/></label><label>Marca<input value={form.brand||''} onChange={e=>set('brand',e.target.value)}/></label><label>Modelo<input value={form.model||''} onChange={e=>set('model',e.target.value)}/></label><label>Conductor<input value={form.current_driver_name||''} onChange={e=>set('current_driver_name',e.target.value)}/></label><label>Obra habitual<input value={form.primary_work_name||''} onChange={e=>set('primary_work_name',e.target.value)}/></label><label>Estado<select value={form.status||'activo'} onChange={e=>set('status',e.target.value)}><option>activo</option><option>en revisión</option><option>baja</option></select></label><label className="checkbox-label"><input type="checkbox" checked={!!form.reservable} onChange={e=>set('reservable',e.target.checked)}/> Reservable</label></div><label>Observaciones<textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)}/></label><button>Guardar</button><button type="button" className="secondary" onClick={onDone}>Cancelar</button></form>
+
+  async function save(e) {
+    e.preventDefault()
+
+    const payload = {
+      plate: form.plate,
+      brand: form.brand,
+      model: form.model,
+      provider: form.provider,
+      contract_line: form.contract_line,
+      current_driver_name: form.current_driver_name,
+      primary_work_name: form.primary_work_name,
+      status: form.status || 'activo',
+      reservable: !!form.reservable,
+      ownership_type: form.ownership_type || 'propio',
+      owner_company: form.owner_company || null,
+      renting_company: form.renting_company || null,
+      renting_contract_number: form.renting_contract_number || null,
+      renting_start_date: form.renting_start_date || null,
+      renting_end_date: form.renting_end_date || null,
+      renting_monthly_cost: form.renting_monthly_cost || null,
+      insurance_company: form.insurance_company || null,
+      insurance_policy: form.insurance_policy || null,
+      current_km: form.current_km === '' || form.current_km === undefined ? null : Number(form.current_km),
+      itv_last_date: form.itv_last_date || null,
+      itv_next_date: form.itv_next_date || null,
+      itv_notes: form.itv_notes || null,
+      oil_last_km: form.oil_last_km === '' || form.oil_last_km === undefined ? null : Number(form.oil_last_km),
+      oil_interval_km: form.oil_interval_km === '' || form.oil_interval_km === undefined ? null : Number(form.oil_interval_km),
+      tyres_last_km: form.tyres_last_km === '' || form.tyres_last_km === undefined ? null : Number(form.tyres_last_km),
+      tyres_interval_km: form.tyres_interval_km === '' || form.tyres_interval_km === undefined ? null : Number(form.tyres_interval_km),
+      maintenance_notes: form.maintenance_notes || null,
+      notes: form.notes
+    }
+
+    const res = form.id
+      ? await supabase.from('vehicles').update(payload).eq('id', form.id)
+      : await supabase.from('vehicles').insert(payload)
+
+    if (res.error) alert(res.error.message)
+    else onDone()
+  }
+
+  return (
+    <form className="card" onSubmit={save}>
+      <h3>{form.id ? 'Modificar vehículo' : 'Alta vehículo'}</h3>
+
+      <h4>Datos básicos</h4>
+      <div className="formgrid">
+        <label>Matrícula<input value={form.plate || ''} onChange={e => set('plate', e.target.value.toUpperCase())} required /></label>
+        <label>Marca<input value={form.brand || ''} onChange={e => set('brand', e.target.value)} /></label>
+        <label>Modelo<input value={form.model || ''} onChange={e => set('model', e.target.value)} /></label>
+        <label>Conductor<input value={form.current_driver_name || ''} onChange={e => set('current_driver_name', e.target.value)} /></label>
+        <label>Obra habitual<input value={form.primary_work_name || ''} onChange={e => set('primary_work_name', e.target.value)} /></label>
+        <label>Estado<select value={form.status || 'activo'} onChange={e => set('status', e.target.value)}><option>activo</option><option>en revisión</option><option>baja</option><option>sustituido</option><option>pendiente entrega</option></select></label>
+        <label className="checkbox-label"><input type="checkbox" checked={!!form.reservable} onChange={e => set('reservable', e.target.checked)} /> Reservable</label>
+      </div>
+
+      <h4>Propiedad / renting</h4>
+      <div className="formgrid">
+        <label>Tipo de propiedad<select value={form.ownership_type || 'propio'} onChange={e => set('ownership_type', e.target.value)}><option value="propio">Propio</option><option value="renting">Renting</option></select></label>
+        <label>Propietario / empresa<input value={form.owner_company || ''} onChange={e => set('owner_company', e.target.value)} placeholder="Eco Habitat, renting…" /></label>
+        <label>Empresa renting<input value={form.renting_company || ''} onChange={e => set('renting_company', e.target.value)} placeholder="Arval, Alphabet, LeasePlan…" /></label>
+        <label>Nº contrato renting<input value={form.renting_contract_number || ''} onChange={e => set('renting_contract_number', e.target.value)} /></label>
+        <label>Inicio renting<input type="date" value={form.renting_start_date || ''} onChange={e => set('renting_start_date', e.target.value)} /></label>
+        <label>Fin renting<input type="date" value={form.renting_end_date || ''} onChange={e => set('renting_end_date', e.target.value)} /></label>
+        <label>Coste mensual<input type="number" step="0.01" value={form.renting_monthly_cost || ''} onChange={e => set('renting_monthly_cost', e.target.value)} /></label>
+        <label>Seguro<input value={form.insurance_company || ''} onChange={e => set('insurance_company', e.target.value)} /></label>
+        <label>Nº póliza<input value={form.insurance_policy || ''} onChange={e => set('insurance_policy', e.target.value)} /></label>
+      </div>
+
+      <h4>Mantenimiento preventivo</h4>
+      <p className="muted">El aviso de aceite y ruedas se calcula con los km actuales, los km del último cambio y el intervalo recomendado.</p>
+      <div className="formgrid">
+        <label>Km actuales<input type="number" value={form.current_km || ''} onChange={e => set('current_km', e.target.value)} /></label>
+        <label>Última ITV<input type="date" value={form.itv_last_date || ''} onChange={e => set('itv_last_date', e.target.value)} /></label>
+        <label>Próxima ITV<input type="date" value={form.itv_next_date || ''} onChange={e => set('itv_next_date', e.target.value)} /></label>
+        <label>Aceite: último cambio km<input type="number" value={form.oil_last_km || ''} onChange={e => set('oil_last_km', e.target.value)} /></label>
+        <label>Aceite: intervalo recomendado km<input type="number" value={form.oil_interval_km || ''} onChange={e => set('oil_interval_km', e.target.value)} placeholder="Ej. 30000" /></label>
+        <label>Ruedas: último cambio km<input type="number" value={form.tyres_last_km || ''} onChange={e => set('tyres_last_km', e.target.value)} /></label>
+        <label>Ruedas: intervalo recomendado km<input type="number" value={form.tyres_interval_km || ''} onChange={e => set('tyres_interval_km', e.target.value)} placeholder="Ej. 40000" /></label>
+      </div>
+
+      <label>Observaciones ITV<textarea value={form.itv_notes || ''} onChange={e => set('itv_notes', e.target.value)} /></label>
+      <label>Observaciones mantenimiento<textarea value={form.maintenance_notes || ''} onChange={e => set('maintenance_notes', e.target.value)} /></label>
+      <label>Observaciones generales<textarea value={form.notes || ''} onChange={e => set('notes', e.target.value)} /></label>
+
+      <button>Guardar</button>
+      <button type="button" className="secondary" onClick={onDone}>Cancelar</button>
+    </form>
+  )
 }
 
 function KmForm({ profile }) {
-  const [vehicles, setVehicles] = useState([]); const [form,setForm] = useState({ month: new Date().toISOString().slice(0,7), allocations:[{work_name:'',km_allocated:''}] })
-  useEffect(()=>{supabase.from('vehicles').select('id,plate,brand,model,current_driver_name').eq('status','activo').then(({data})=>setVehicles(data||[]))},[])
-  function patch(k,v){setForm(f=>({...f,[k]:v}))}
-  async function save(e){
+  const today = new Date().toISOString().slice(0, 10)
+  const [vehicles, setVehicles] = useState([])
+  const [dailyRows, setDailyRows] = useState([])
+  const [message, setMessage] = useState('')
+  const [form, setForm] = useState({
+    vehicle_id: '',
+    date: today,
+    driver_name: profile?.full_name || profile?.email || '',
+    work_name: '',
+    km_start: '',
+    km_end: '',
+    notes: ''
+  })
+
+  useEffect(() => { load() }, [])
+
+  function patch(k, v) { setForm(f => ({ ...f, [k]: v })) }
+
+  async function load() {
+    const { data: vehicleData, error: vehicleError } = await supabase
+      .from('vehicles')
+      .select('id,plate,brand,model,current_driver_name,primary_work_name,current_km,status')
+      .eq('status', 'activo')
+      .order('plate')
+
+    if (vehicleError) setMessage(vehicleError.message)
+    else setVehicles(vehicleData || [])
+
+    const { data: kmData, error: kmError } = await supabase
+      .from('daily_km')
+      .select('*, vehicles(plate,brand,model)')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(40)
+
+    if (kmError) setMessage(kmError.message)
+    else setDailyRows(kmData || [])
+  }
+
+  function onVehicleChange(vehicleId) {
+    const vehicle = vehicles.find(v => v.id === vehicleId)
+    patch('vehicle_id', vehicleId)
+    if (vehicle) {
+      setForm(f => ({
+        ...f,
+        vehicle_id: vehicleId,
+        driver_name: f.driver_name || vehicle.current_driver_name || profile?.full_name || profile?.email || '',
+        work_name: f.work_name || vehicle.primary_work_name || '',
+        km_start: vehicle.current_km ?? f.km_start ?? ''
+      }))
+    }
+  }
+
+  async function save(e) {
     e.preventDefault()
-    const km = Number(form.km_end||0) - Number(form.km_start||0)
-    const { data, error } = await supabase.from('monthly_km').insert({ vehicle_id: form.vehicle_id, month: form.month + '-01', km_start: form.km_start, km_end: form.km_end, notes: form.notes }).select().single()
+    setMessage('')
+
+    const kmStart = Number(form.km_start)
+    const kmEnd = Number(form.km_end)
+
+    if (!Number.isFinite(kmStart) || !Number.isFinite(kmEnd)) {
+      setMessage('Indica km iniciales y finales válidos.')
+      return
+    }
+
+    if (kmEnd < kmStart) {
+      setMessage('Los km finales no pueden ser inferiores a los iniciales.')
+      return
+    }
+
+    const payload = {
+      vehicle_id: form.vehicle_id,
+      date: form.date,
+      driver_name: form.driver_name || profile?.full_name || profile?.email || null,
+      work_name: form.work_name || null,
+      km_start: kmStart,
+      km_end: kmEnd,
+      notes: form.notes || null,
+      created_by: profile?.id || null
+    }
+
+    const { error } = await supabase.from('daily_km').insert(payload)
     if (error) {
-  if (error.message.includes('monthly_km_vehicle_id_month_key')) {
-    return alert('Ya existe un registro de kilómetros para este vehículo y este mes. Revisa el registro existente antes de crear uno nuevo.')
+      setMessage(error.message)
+      return
+    }
+
+    await supabase
+      .from('vehicles')
+      .update({ current_km: kmEnd })
+      .eq('id', form.vehicle_id)
+
+    setMessage('Kilómetros diarios guardados correctamente.')
+    setForm(f => ({
+      ...f,
+      km_start: kmEnd,
+      km_end: '',
+      notes: ''
+    }))
+    load()
   }
 
-  return alert(error.message)
-}
-    const validAllocations = form.allocations.filter(a => a.work_name)
-const rows = validAllocations.map((a) => {
-  const allocatedKm = a.km_allocated
-    ? Number(a.km_allocated)
-    : validAllocations.length === 1
-      ? km
-      : 0
+  return (
+    <section>
+      <form className="card" onSubmit={save}>
+        <h2>Kilómetros diarios</h2>
+        <p className="muted">Registra los kilómetros al final de cada día o al finalizar el uso del vehículo.</p>
+        {message && <p className={message.includes('correctamente') ? 'success' : 'error'}>{message}</p>}
 
-  return {
-    monthly_km_id: data.id,
-    work_name: a.work_name,
-    km_allocated: allocatedKm
-  }
-})
-    if (rows.length) await supabase.from('km_work_allocations').insert(rows)
-    alert('Kilómetros guardados')
-  }
-  return <form className="card" onSubmit={save}><h2>Kilómetros mensuales</h2><label>Vehículo<select required value={form.vehicle_id||''} onChange={e=>patch('vehicle_id',e.target.value)}><option value="">Seleccionar</option>{vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} · {v.brand} {v.model}</option>)}</select></label><div className="formgrid"><label>Mes<input type="month" value={form.month} onChange={e=>patch('month',e.target.value)} required/></label><label>Km iniciales<input type="number" value={form.km_start||''} onChange={e=>patch('km_start',e.target.value)} required/></label><label>Km finales<input type="number" value={form.km_end||''} onChange={e=>patch('km_end',e.target.value)} required/></label></div><h3>Imputación a obras</h3>{form.allocations.map((a,i)=><div className="inline" key={i}><input placeholder="Nombre de obra" value={a.work_name} onChange={e=>{const arr=[...form.allocations];arr[i].work_name=e.target.value;patch('allocations',arr)}}/><input type="number" placeholder="Km" value={a.km_allocated} onChange={e=>{const arr=[...form.allocations];arr[i].km_allocated=e.target.value;patch('allocations',arr)}}/></div>)}<button type="button" className="secondary" onClick={()=>patch('allocations',[...form.allocations,{work_name:'',km_allocated:''}])}>Añadir otra obra</button><label>Observaciones<textarea value={form.notes||''} onChange={e=>patch('notes',e.target.value)}/></label><button>Guardar kilómetros</button></form>
+        <label>
+          Vehículo
+          <select required value={form.vehicle_id || ''} onChange={e => onVehicleChange(e.target.value)}>
+            <option value="">Seleccionar</option>
+            {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} · {v.brand} {v.model} · km {formatNumber(v.current_km) || 'sin dato'}</option>)}
+          </select>
+        </label>
+
+        <div className="formgrid">
+          <label>Fecha<input type="date" required value={form.date} onChange={e => patch('date', e.target.value)} /></label>
+          <label>Conductor<input required value={form.driver_name || ''} onChange={e => patch('driver_name', e.target.value)} placeholder="Nombre conductor" /></label>
+          <label>Obra<input value={form.work_name || ''} onChange={e => patch('work_name', e.target.value)} placeholder="Obra o centro de trabajo" /></label>
+          <label>Km iniciales<input type="number" required value={form.km_start || ''} onChange={e => patch('km_start', e.target.value)} /></label>
+          <label>Km finales<input type="number" required value={form.km_end || ''} onChange={e => patch('km_end', e.target.value)} /></label>
+        </div>
+
+        <p className="muted">
+          Km del día: {Number.isFinite(Number(form.km_end)) && Number.isFinite(Number(form.km_start)) && Number(form.km_end) >= Number(form.km_start)
+            ? formatNumber(Number(form.km_end) - Number(form.km_start))
+            : '—'}
+        </p>
+
+        <label>Observaciones<textarea value={form.notes || ''} onChange={e => patch('notes', e.target.value)} /></label>
+        <button>Guardar kilómetros diarios</button>
+      </form>
+
+      <section className="card">
+        <h3>Registros recientes</h3>
+        {!dailyRows.length && <p className="muted">Todavía no hay kilómetros diarios registrados.</p>}
+        <div className="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Vehículo</th>
+                <th>Conductor</th>
+                <th>Obra</th>
+                <th>Km inicio</th>
+                <th>Km fin</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailyRows.map(row => (
+                <tr key={row.id}>
+                  <td>{formatDate(row.date)}</td>
+                  <td>{row.vehicles?.plate || ''} · {row.vehicles?.brand || ''} {row.vehicles?.model || ''}</td>
+                  <td>{row.driver_name || ''}</td>
+                  <td>{row.work_name || ''}</td>
+                  <td>{formatNumber(row.km_start)}</td>
+                  <td>{formatNumber(row.km_end)}</td>
+                  <td>{formatNumber(row.km_total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  )
 }
 
 function IncidentForm({ profile, onSaved }) {
@@ -1684,6 +1952,75 @@ function formatDistance(distanceKm) {
   if (!Number.isFinite(distanceKm)) return ''
   if (distanceKm < 1) return `${Math.round(distanceKm * 1000)} m`
   return `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km`
+}
+
+function formatDate(value) {
+  if (!value) return ''
+  return new Date(`${value}T00:00:00`).toLocaleDateString('es-ES')
+}
+
+function formatNumber(value) {
+  if (value === null || value === undefined || value === '') return ''
+  const number = Number(value)
+  if (!Number.isFinite(number)) return ''
+  return new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 }).format(number)
+}
+
+function getOwnershipLabel(vehicle) {
+  if ((vehicle.ownership_type || '').toLowerCase() === 'renting') {
+    return `Renting${vehicle.renting_company ? ` · ${vehicle.renting_company}` : vehicle.owner_company ? ` · ${vehicle.owner_company}` : ''}`
+  }
+  return `Propio${vehicle.owner_company ? ` · ${vehicle.owner_company}` : ''}`
+}
+
+function getKmMaintenance(vehicle, type) {
+  const current = Number(vehicle.current_km)
+  const last = Number(type === 'oil' ? vehicle.oil_last_km : vehicle.tyres_last_km)
+  const interval = Number(type === 'oil' ? vehicle.oil_interval_km : vehicle.tyres_interval_km)
+
+  if (!Number.isFinite(current) || !Number.isFinite(last) || !Number.isFinite(interval) || interval <= 0) {
+    return null
+  }
+
+  const next = last + interval
+  return {
+    next,
+    remaining: next - current
+  }
+}
+
+function formatMaintenanceKm(vehicle, type) {
+  const data = getKmMaintenance(vehicle, type)
+  if (!data) return 'sin dato'
+  if (data.remaining < 0) return `vencido hace ${formatNumber(Math.abs(data.remaining))} km`
+  return `faltan ${formatNumber(data.remaining)} km`
+}
+
+function getVehicleAlerts(vehicle) {
+  const alerts = []
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  if (vehicle.itv_next_date) {
+    const itvDate = new Date(`${vehicle.itv_next_date}T00:00:00`)
+    const days = Math.ceil((itvDate - today) / (1000 * 60 * 60 * 24))
+    if (days < 0) alerts.push({ level: 'critical', text: `ITV vencida hace ${Math.abs(days)} día(s)` })
+    else if (days <= 30) alerts.push({ level: 'warning', text: `ITV vence en ${days} día(s)` })
+  }
+
+  const oil = getKmMaintenance(vehicle, 'oil')
+  if (oil) {
+    if (oil.remaining < 0) alerts.push({ level: 'critical', text: `Aceite vencido ${formatNumber(Math.abs(oil.remaining))} km` })
+    else if (oil.remaining <= 1000) alerts.push({ level: 'warning', text: `Aceite en ${formatNumber(oil.remaining)} km` })
+  }
+
+  const tyres = getKmMaintenance(vehicle, 'tyres')
+  if (tyres) {
+    if (tyres.remaining < 0) alerts.push({ level: 'critical', text: `Ruedas vencidas ${formatNumber(Math.abs(tyres.remaining))} km` })
+    else if (tyres.remaining <= 2000) alerts.push({ level: 'warning', text: `Ruedas en ${formatNumber(tyres.remaining)} km` })
+  }
+
+  return alerts
 }
 
 function formatDateTime(value) {

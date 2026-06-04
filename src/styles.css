@@ -278,3 +278,81 @@
     min-width: 0;
   }
 }
+
+.alert-summary {
+  border: 1px solid #f0b35a;
+  background: #fff8eb;
+}
+
+.vehicle-card {
+  border: 1px solid transparent;
+}
+
+.vehicle-card-alert {
+  border-color: #f0b35a;
+  box-shadow: 0 10px 32px #a05a001f;
+}
+
+.vehicle-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.alert-pill {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: #fff0d4;
+  color: #7a4100;
+  font-weight: 800;
+  font-size: .86rem;
+}
+
+.maintenance-alerts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.maintenance-pill {
+  border-radius: 999px;
+  padding: 8px 10px;
+  font-weight: 800;
+  font-size: .86rem;
+}
+
+.maintenance-pill.warning {
+  background: #fff3cd;
+  color: #7a4d00;
+}
+
+.maintenance-pill.critical {
+  background: #fde2e2;
+  color: #8a1f1f;
+}
+
+.vehicle-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 14px;
+  margin: 10px 0;
+}
+
+.vehicle-info-grid p {
+  margin: 0;
+}
+
+@media(max-width:640px){
+  .vehicle-card-header {
+    display: grid;
+  }
+
+  .alert-pill {
+    width: fit-content;
+  }
+}
