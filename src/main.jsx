@@ -1647,10 +1647,12 @@ function GasolinerasPage() {
     if (userLocation) {
       bounds.push([userLocation.lat, userLocation.lng])
       const userMarker = L.circleMarker([userLocation.lat, userLocation.lng], {
-        radius: 9,
-        weight: 3,
-        fillOpacity: 0.95
-      })
+  radius: 11,
+  color: '#ffffff',
+  fillColor: '#d71920',
+  weight: 3,
+  fillOpacity: 0.95
+})
       userMarker.bindPopup(`
         <strong>Tu ubicación aproximada</strong><br/>
         Precisión: ${Math.round(userLocation.accuracy || 0)} m
