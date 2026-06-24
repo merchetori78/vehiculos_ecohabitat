@@ -1992,8 +1992,8 @@ function getKmMaintenance(vehicle, type) {
 function formatMaintenanceKm(vehicle, type) {
   const data = getKmMaintenance(vehicle, type)
   if (!data) return 'sin dato'
-  if (data.remaining < 0) return `vencido hace ${formatNumber(Math.abs(data.remaining))} km`
-  return `faltan ${formatNumber(data.remaining)} km`
+
+  return `próximo cambio a los ${formatNumber(data.next)} km`
 }
 
 function getVehicleAlerts(vehicle) {
