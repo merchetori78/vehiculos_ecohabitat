@@ -1482,6 +1482,11 @@ function formatReservationForDay(reservation, day) {
 }
 
 
+function formatDescuentoGasolinera(g) {
+  if (g.descuento === null || g.descuento === undefined || g.descuento === '') return ''
+  return g.descuento_texto || `${g.descuento} cts/l`
+}
+
 function GasolinerasPage() {
   const [gasolineras, setGasolineras] = useState([])
   const [loadingGasolineras, setLoadingGasolineras] = useState(true)
@@ -1519,6 +1524,7 @@ function GasolinerasPage() {
         .from('gasolineras')
         .select('codigo,codigo_solred,nombre,rotulo,direccion,municipio,provincia,latitud,longitud,descuento,descuento_texto,combustibles_descuento,comunidad_autonoma,codigo_postal,margen,horario,productos,servicios,google_maps_url,activa')
         .eq('activa', true)
+        .eq('descuento', 6)
         .order('provincia')
         .order('municipio')
         .order('nombre')
@@ -1676,7 +1682,7 @@ function GasolinerasPage() {
         ${g.distanceKm !== null ? `<b>A ${formatDistance(g.distanceKm)}</b><br/>` : ''}
         ${escapeHtml(g.direccion || '')}<br/>
         ${escapeHtml([g.municipio, g.provincia].filter(Boolean).join(', '))}<br/>
-        <b>Descuento:</b> ${escapeHtml(g.descuento_texto || `${g.descuento ?? 6} cts/l`)}<br/>
+        <b>Descuento:</b> ${escapeHtml(formatDescuentoGasolinera(g))}<br/>
         ${g.combustibles_descuento ? `<b>Combustible:</b> ${escapeHtml(g.combustibles_descuento)}<br/>` : ''}
         ${g.horario ? `<b>Horario:</b> ${escapeHtml(g.horario)}<br/>` : ''}
         ${g.servicios ? `<b>Servicios:</b> ${escapeHtml(g.servicios)}<br/>` : ''}
@@ -1805,7 +1811,7 @@ function GasolinerasPage() {
                   {userLocation && <td>{g.distanceKm !== null ? formatDistance(g.distanceKm) : ''}</td>}
                   <td>{g.combustibles_descuento || ''}</td>
                   <td>{g.horario || ''}</td>
-                  <td>{g.descuento_texto || `${g.descuento || 6} cts/l`}</td>
+                  <td>{formatDescuentoGasolinera(g)}</td>
                   <td>
                     {hasValidCoords(g) && (
                       <button
