@@ -1482,10 +1482,15 @@ function formatReservationForDay(reservation, day) {
 }
 
 
-function formatDescuentoGasolinera(g) {
-  if (g.descuento === null || g.descuento === undefined || g.descuento === '') return ''
+function hasDescuento6(g) {
+  return Number(g?.descuento) === 6
+}
+
+function formatGasolineraDescuento(g) {
+  if (!hasDescuento6(g)) return ''
   return g.descuento_texto || `${g.descuento} cts/l`
 }
+
 
 function GasolinerasPage() {
   const [gasolineras, setGasolineras] = useState([])
@@ -1545,7 +1550,7 @@ function GasolinerasPage() {
       setErrorMessage(error.message)
       setGasolineras([])
     } else {
-      setGasolineras(allGasolineras)
+      setGasolineras(allGasolineras.filter(hasDescuento6))
     }
 
     setLoadingGasolineras(false)
@@ -1597,6 +1602,7 @@ function GasolinerasPage() {
   }
 
   const filtered = gasolineras
+    .filter(hasDescuento6)
     .map(g => {
       const distanceKm = userLocation && hasValidCoords(g)
         ? getDistanceKm(userLocation.lat, userLocation.lng, Number(g.latitud), Number(g.longitud))
@@ -1682,7 +1688,7 @@ function GasolinerasPage() {
         ${g.distanceKm !== null ? `<b>A ${formatDistance(g.distanceKm)}</b><br/>` : ''}
         ${escapeHtml(g.direccion || '')}<br/>
         ${escapeHtml([g.municipio, g.provincia].filter(Boolean).join(', '))}<br/>
-        <b>Descuento:</b> ${escapeHtml(formatDescuentoGasolinera(g))}<br/>
+        <b>Descuento:</b> ${escapeHtml(formatGasolineraDescuento(g))}<br/>
         ${g.combustibles_descuento ? `<b>Combustible:</b> ${escapeHtml(g.combustibles_descuento)}<br/>` : ''}
         ${g.horario ? `<b>Horario:</b> ${escapeHtml(g.horario)}<br/>` : ''}
         ${g.servicios ? `<b>Servicios:</b> ${escapeHtml(g.servicios)}<br/>` : ''}
@@ -1811,7 +1817,7 @@ function GasolinerasPage() {
                   {userLocation && <td>{g.distanceKm !== null ? formatDistance(g.distanceKm) : ''}</td>}
                   <td>{g.combustibles_descuento || ''}</td>
                   <td>{g.horario || ''}</td>
-                  <td>{formatDescuentoGasolinera(g)}</td>
+                  <td>{formatGasolineraDescuento(g)}</td>
                   <td>
                     {hasValidCoords(g) && (
                       <button
