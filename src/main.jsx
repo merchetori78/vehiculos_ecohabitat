@@ -2628,7 +2628,7 @@ img {
 }
 
 function canSeeReports(profile) {
-  return ['admin', 'flota'].includes(profile?.role)
+  return ['admin', 'flota', 'jefe_obra'].includes(profile?.role)
 }
 
 function canReserve(profile) {
