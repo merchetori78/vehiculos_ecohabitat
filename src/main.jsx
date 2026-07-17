@@ -229,16 +229,35 @@ function Vehicles({ profile }) {
         {vehicles.map(v => {
           const alerts = getVehicleAlerts(v)
           const ownershipLabel = getOwnershipLabel(v)
+          const hasGeneralNotes = Boolean(v.notes?.trim())
 
           return (
-            <article className={`card vehicle-card ${alerts.length ? 'vehicle-card-alert' : ''}`} key={v.id}>
+            <article
+              className={`card vehicle-card ${alerts.length || hasGeneralNotes ? 'vehicle-card-alert' : ''}`}
+              key={v.id}
+            >
               <div className="vehicle-card-header">
                 <div>
                   <h3>{v.plate} · {v.brand} {v.model}</h3>
                   <p>{v.current_driver_name || 'Sin conductor'} · {v.primary_work_name || 'Sin obra'} · {v.status}</p>
                 </div>
-                {!!alerts.length && <span className="alert-pill">{alerts.length} aviso(s)</span>}
+                <div className="inline">
+                  {!!alerts.length && <span className="alert-pill">{alerts.length} aviso(s)</span>}
+                  {hasGeneralNotes && (
+                    <span className="alert-pill" title={v.notes}>
+                      📝 Con observaciones
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {hasGeneralNotes && (
+                <div className="maintenance-alerts">
+                  <span className="maintenance-pill warning">
+                    <b>Observaciones generales:</b> {v.notes}
+                  </span>
+                </div>
+              )}
 
               {!!alerts.length && (
                 <div className="maintenance-alerts">
